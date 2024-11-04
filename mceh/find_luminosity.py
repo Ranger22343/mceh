@@ -14,7 +14,23 @@ from matplotlib import pyplot as plt
 from itertools import accumulate
 import copy
 import lzma
+"""
+notes:
+RA are randomly chosed from 0~2pi
+cos(DEC) are randomly chosed from 0~1
+N_clean = N_obs - N_randomCorrect 
+        = N_obs - <N_random * (A_obs/A_random)>
+        = N_obs - A_obs * <(N_random/A_random)>
 
+ver3:
+import photoz selection.
+
+ver4:
+add z_bound function.
+"""
+
+
+# %%
 def index_within_angular_radius(sat_ra, sat_dec, center_ra, center_dec,
                                 angular_radius):
     """Find the index of data within a given circle on the sky.
@@ -341,3 +357,5 @@ def clean_skypoint(ra, dec, r, data_ra, data_dec, return_index=False):
     if return_index:
         return np.where(is_return)[0]
     return data_ra[is_return], data_dec[is_return]
+
+# %%

@@ -3,6 +3,7 @@ Last changed date: 2024 Oct 7
 
 The main code to do the MCMC.
 """
+from . import utility as ut
 from . import fitting
 
 import numpy as np
