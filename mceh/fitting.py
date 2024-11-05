@@ -7,7 +7,6 @@ import emcee
 from scipy.integrate import quad
 from astropy.io import fits
 from . import find_luminosity as fl
-from rsmodel import outputModels
 import matplotlib.pyplot as plt
 import corner
 from scipy.optimize import curve_fit
@@ -355,12 +354,6 @@ def phi_model(log_M, A: float, B: float) -> float:
     return A * (M / M_piv)**B
 
 
-@np.vectorize
-def cmag(z):  # i-band characteristic magnitude by the model
-    return outputModels.printRSmodel('data/bc03_rs_zfp3d0_tau_p0d4.fits',
-                                     ['hsc_i'], z)[1]['hsc_i'][4]
-
-
 def bkg_density(z, z_list, rd_bkg_mean, rd_bkg_std):
     mean4z = np.array([
         np.interp(z, z_list, rd_bkg_mean[:, i])
@@ -603,18 +596,13 @@ def get_sampler(cluster_index,
     return [sampler, state, zero_index]
 
 
-def find_band(z, wl_data):
-    wl = 4000
-    gr, ri, iz, zy = wl_data
-    obs_wl = wl * (1 + z)
-    if obs_wl < gr:
-      return 'r'
-    elif (obs_wl > gr) & (obs_wl < ri):
-       return 'i'
-    elif (obs_wl > ri) & (obs_wl < iz):
-       return 'z'
-    elif (obs_wl > iz) & (obs_wl < zy):
-       return 'y'
+def fit_band(z):
+    if 0.0 < z and z < 0.35:
+        return 'r'
+    if 0.35 <= z and z < 0.75:
+        return 'i'
+    if 0.75 <= z and z < 1.12:
+        return 'z'
     else:
-       return None
+        return 'y'
 # %%
