@@ -1,7 +1,3 @@
-"""
-Last changed date: 2024 Oct 26
-"""
-# %%
 import random
 from astropy.table import Table
 import numpy as np
@@ -341,3 +337,14 @@ def clean_skypoint(ra, dec, r, data_ra, data_dec, return_index=False):
     if return_index:
         return np.where(is_return)[0]
     return data_ra[is_return], data_dec[is_return]
+
+
+def fit_band(z):
+    if 0.0 < z and z < 0.35:
+        return 'r'
+    if 0.35 <= z and z < 0.75:
+        return 'i'
+    if 0.75 <= z and z < 1.12:
+        return 'z'
+    else:
+        return 'y'            
