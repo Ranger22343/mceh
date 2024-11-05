@@ -341,7 +341,7 @@ def clean_skypoint(ra, dec, r, data_ra, data_dec, return_index=False):
 
 
 @np.vectorize
-def cmag(z, band_name):  # i-band characteristic magnitude by the model
+def cmag(z, band_name):  # characteristic magnitude by the model
     # band_name: ex. 'hsc_i'
-    return outputModels.printRSmodel('data/bc03_rs_zfp3d0_tau_p0d4.fits',
+    return outputModels.printRSmodel('data/modl_rs_zfp3d0_tau_p0d4.fits',
                                      [band_name], z)[1][band_name][4]
