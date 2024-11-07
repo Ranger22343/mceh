@@ -19,7 +19,7 @@ The original data is called `eFEDS_clusters_V3.2.fits` and `eFEDS_c001_main_ctp_
 
 ## eFEDS Ver.6
 The data name is `modified_efeds_ver6.fits`.
-The generating code is `generate_modified_efeds_ver6.fits`.
+The generating code is `generate_modified_efeds_ver6.ipynb`.
 `modified_random_ver1.fits`, `modified_hsc_ver1.fits`, `eFEDSmasstable.fits`, `bc03_rs_zfp3d0_tau_p0d4.fits`(from I-Non) and `eFEDS_c001_main_ctp_clus_v2.1.fits` are needed.
 The modifications of the previous versions are unclear, so they are not recorded in this markdown file. This new version of eFEDS file will be generated independently of the previous modified versions.
 The modifications are:
@@ -34,6 +34,15 @@ The modifications are:
 - Add columns `unmasked_area` and `area`. The unmasked area is obtained by counting numbers (#) of random points of random catlog within the radii (`r500c_lcdm`) of the cluter centers, so it is #/100 $\text{arcmin}^2$. And `area` is the actual areas of the clusters on the sky, which are obtained by $2\pi (1-\cos^2{r})$.
 - Add columns `g/r/i/z/ymag_cmodel` which are the characteristic magnitude from I-Non's model.
 - Add the column `galaxy_index` which is the  indicies of galaxies (from `modified_hsc_ver1.fits`) within the radii (`r500c_lcdm`) of the cluster centers.
+
+## eFEDS Ver.7
+The data name is `modified_efeds_ver7.fits`.
+The generating code is `generate_modified_efeds_ver7.ipynb`.
+`modified_efeds_ver6.fits` and `bc03_rs_zfp3d0_tau_p0d4.fits` are needed.
+`mceh` version is `3.0.0-alpha2`.
+- Fix cmag()
+- Add the code of I-Non's characteristic magnitude model called `rsmodel`
+- Add a column `unmasked_fraction`
 
 # HSC
 ## Original

@@ -605,4 +605,3 @@ def fit_band(z):
         return 'z'
     else:
         return 'y'
-# %%
