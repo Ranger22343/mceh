@@ -597,6 +597,7 @@ def get_sampler(cluster_index,
 
 
 def fit_band(z):
+    # Find the proper band for fitting for a given redshift.
     if 0.0 < z and z < 0.35:
         return 'r'
     if 0.35 <= z and z < 0.75:

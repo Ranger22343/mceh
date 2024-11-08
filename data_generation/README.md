@@ -39,7 +39,7 @@ The modifications are:
 The data name is `modified_efeds_ver7.fits`.
 The generating code is `generate_modified_efeds_ver7.ipynb`.
 `modified_efeds_ver6.fits` and `bc03_rs_zfp3d0_tau_p0d4.fits` are needed.
-`mceh` version is `3.0.0-alpha2`.
+`mceh` version is `3.0.0-alpha.2`.
 - Fix cmag()
 - Add the code of I-Non's characteristic magnitude model called `rsmodel`
 - Add a column `unmasked_fraction`

@@ -19,7 +19,7 @@ def init(*args):
     returnme = []
     for arg in args:
         if arg == 'efeds':
-            efeds = QTable.read('data/modified_efeds_ver6.fits')
+            efeds = QTable.read('data/modified_efeds_ver7.fits')
             returnme.append(efeds)
         if arg == 'hsc':
             hsc = QTable.read(
