@@ -249,7 +249,7 @@ def nonoverlapping_random_point(number,
                                 try_limit=10000,
                                 rd_data=None,
                                 coverage=0.,
-                                return_none_coverage=False,
+                                coverage_returned_none=False,
                                 progress=False,
                                 step=False):
     """Generate a given number of non-overlapping random points on the sky.
@@ -276,7 +276,7 @@ def nonoverlapping_random_point(number,
             keys 'RA' and 'DEC'.
         coverage (float): The lowest percentage of unmasked area to pass. If
             != 0, this function will also return the unmasked coverage.
-        return_none_coverage(bool): Whether the unmasked coverage of each center
+        coverage_returned_none(bool): Whether the unmasked coverage of each center
             should be returned `None`. Change it to `True` will save time only 
             if `coverage` equals the default value (i.e. 0).
         progress (bool): Whether it should print the progress.
@@ -308,7 +308,7 @@ def nonoverlapping_random_point(number,
 
             sep = rd_coord.separation(prevent_coord)
             if np.all((sep > prevent_r + r)):
-                if return_none_coverage == False:
+                if coverage_returned_none == False:
                     area = r**2 * np.pi
                     unm_area = unmasked_area(rd_ra, rd_dec, r, rd_data)
                     cov = unm_area / area
@@ -331,7 +331,7 @@ def nonoverlapping_random_point(number,
             print(f'Finish {i+1}/{number}')
     pass_ra = u.quantity.Quantity(pass_ra)
     pass_dec = u.quantity.Quantity(pass_dec)
-    if return_none_coverage == True:
+    if coverage_returned_none == True:
         pass_coverage = np.full(len(pass_ra.value), None)
     return pass_ra, pass_dec, pass_coverage
 
