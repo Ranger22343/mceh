@@ -16,25 +16,20 @@ from astropy.table import QTable
 
 
 def init(*args):
-    returnme = []
+    return_dict = {}
     for arg in args:
         if arg == 'efeds':
             efeds = QTable.read('data/modified_efeds_ver7.fits')
-            returnme.append(efeds)
+            return_dict['efeds'] = efeds
         if arg == 'hsc':
             hsc = QTable.read(
                 'data/modified_hsc_ver1.fits'
                 )
-            returnme.append(hsc)
+            return_dict['hsc'] = hsc
         if arg == 'rd':
             rd = QTable.read('data/modified_random_ver1.fits')
-            returnme.append(rd)
-        if arg == 'bkg_all':
-            with open('data/bkg_result2.pickle', 'rb') as f:
-                bkg_all = pickle.load(f)
-            returnme.append(bkg_all)
-    if len(returnme) == 1:
-        return returnme[0]
+            return_dict['rd'] = rd
+    returnme = [return_dict[arg] for arg in args]
     return returnme
 
 
@@ -177,6 +172,18 @@ def change_bins(y, old_bin, new_bin):
 
 
 def cut_range(num, bin_num):
+    """Evenly distribute range(`num`) in given bins.
+
+    range(`num`) will be created and numbers in it will be evenly distributed
+    in `bin_num` bins and these bins will be returned. 
+
+    Args:
+        num (int): Length of the numbers (start at 0).
+        bin_num (int): Number of bins to ditribute the numbers.
+    Returns:
+        (list): Every element represents the numbers in this bin. 
+            Ex: [[0, 1, 2], [3, 4, 5], [6, 7]]
+    """
     returnme = [[] for i in range(bin_num)]
     width = num // bin_num
     redundant_num = num - bin_num * width

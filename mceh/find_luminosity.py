@@ -285,7 +285,7 @@ def nonoverlapping_random_point(number,
     Returns:
         
         ((`number`,) Quantity, (`number`,) Quantity, (`number`,) ndarray)
-        The RA/DEC of the random points.
+        The RA/DEC/unmasked_coverage of the random points.
     """
     pass_ra = []
     pass_dec = []
@@ -309,7 +309,7 @@ def nonoverlapping_random_point(number,
             sep = rd_coord.separation(prevent_coord)
             if np.all((sep > prevent_r + r)):
                 if coverage_returned_none == False:
-                    area = r**2 * np.pi
+                    area = 2 * np.pi * (1 - np.cos(r)) * u.rad**2
                     unm_area = unmasked_area(rd_ra, rd_dec, r, rd_data)
                     cov = unm_area / area
                     if cov < coverage / 100:
