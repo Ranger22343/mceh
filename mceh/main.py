@@ -33,13 +33,5 @@ def manual():
     "due to the zero-detected background LF."
     )
 
-def get_common_bkg_d(galaxy_index, efeds, bkg_all):
-    efeds_ = efeds[galaxy_index]
-    
-    bkg_mean_d, bkg_std_d = fitting.bkg_info(np.atleast_1d(efeds_['z']), bkg_all['z_list'], 
-                                             bkg_all['mean'], bkg_all['std'])
-    common_bkg_mean_d = np.mean(np.atleast_2d(bkg_mean_d), axis = 0)
-    common_bkg_std_d = ((np.sum(np.atleast_2d(bkg_std_d) ** 2, axis = 0)) ** 0.5 
-                        / len(bkg_std_d)) # mean after ^ 0.5
-    return common_bkg_mean_d, common_bkg_std_d
+
 

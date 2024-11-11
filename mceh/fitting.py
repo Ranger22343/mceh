@@ -265,12 +265,17 @@ def find_half(cluster, check=False):
     return [low_hist, low_bin, high_hist, high_bin, median_bin_index]
 
 
-def find_ini_args(bkg_mean_d, bkg_std_d, nwalkers, ndim):
+def find_ini_args(bkg_mean_d, bkg_std_d, nwalkers, ndim, 
+                  mode='phi_model_schechter'):
     # A, B, alpha, dm 30 1 -1 0
     # rd_bkg_mean = [[b11, b12, b13...], [b21, b22, b23] ...],
     # where bij is the jth value of the ith cluster.
-    p0_number = [30, 1, -1, 0]
-    p_var = [15, 0.2, 1, 0.2]  # Variations of A, B, alpha and dm
+    if mode == 'phi_model_schechter':
+        p0_number = [30, 1, -1, 0]
+        p_var = [15, 0.2, 1, 0.2]  # Variations of A, B, alpha and dm
+    elif mode == 'schechter':
+        p0_number = [30, -1 ,0]
+        p_var = [15, 1, 0.2] 
     total_var = np.append(p_var, bkg_std_d)
     p0_number = np.append(p0_number, bkg_mean_d)
     randomization = np.random.rand(nwalkers, ndim) * 2
@@ -368,7 +373,8 @@ def bkg_density(z, z_list, rd_bkg_mean, rd_bkg_std):
 # %%
 # def log_prob(p, obs, bkg, rd_bkg_mean, rd_bkg_std, bins = np.linspace(14,24,41), double = False):
 def stacked_log_prob(p, obs, ms_model, log_mass, area, common_bkg_mean_d,
-                     common_bkg_std_d, common_bin_pair, all_bin_pair):
+                     common_bkg_std_d, common_bin_pair, all_bin_pair,
+                     mode='phi_model_schechter'):
     """The sum of the logarithmic probability of the group of clusters. 
 
     Args:
@@ -397,13 +403,14 @@ def stacked_log_prob(p, obs, ms_model, log_mass, area, common_bkg_mean_d,
         float
         The sum of the logarithmic probability of the group of clusters.
     """
-    (A, B, alpha, dm) = p[:4]
+    if mode == 'phi_model_schechter':
+        (A, B, alpha, dm) = p[:4]
+        common_bkg_d = np.array(p[4:])
     ms_model = np.atleast_1d(ms_model)
     area = np.atleast_1d(area)
     log_mass = np.atleast_1d(log_mass)
     obs = np.atleast_2d(obs)
     cluster_num = len(ms_model)
-    common_bkg_d = np.array(p[4:])
     if len(np.unique([len(obs), len(ms_model), len(area)])) != 1:
         raise ValueError('obs, ms_model, area, common_bkg_mean_d and'
                          'common_bkg_std_d must have the same length')
@@ -532,54 +539,53 @@ def cut_mag(cmag, lf, diff, bins=np.linspace(14, 24, 41)):
 
 
 
-def get_sampler(cluster_index,
+def get_sampler(obs_alllf,
                 common_bkg_mean_d,
                 common_bkg_std_d,
-                efeds,
+                ms_model,
+                log_mass,
+                area,
+                bins=bins,
                 nwalkers=32,
                 step=10000,
                 p0=None,
                 cpu_num=1,
+                mode='phi_model_schechter',
                 progress=False,
                 check=False):
-    efeds = efeds[cluster_index]
     zero_index = np.where(common_bkg_std_d == 0)[0]
     not_zero_index = np.where(common_bkg_std_d != 0)[0]
     common_bkg_mean_d = np.delete(common_bkg_mean_d, zero_index)
     common_bkg_std_d = np.delete(common_bkg_std_d, zero_index)
+    cluster_num = len(obs_alllf)
 
     # Check if any bin with bkg = 0 is contained in the bins any cluster using
     # And this situation is what I currently don't handle
     # Imagine every bin is labeled by the left side of the magnitude bin
     zero_bin_left = bins[zero_index]
-    for i in range(len(efeds)):
-        if any([
-                efeds['bins2'][i][j] in zero_bin_left
-                for j in range(len(efeds['bins2'][i]) - 1)
-        ]):
-            raise ValueError("There are bins of observation with corresponding"
-                             "background being zero.")
 
-    cluster_obs = efeds['i_obs_alllf_corrected2']
     common_bins_dim = len(common_bkg_mean_d)
     common_bin_pair = [[bins[not_zero_index[i]], bins[not_zero_index[i] + 1]]
                        for i in range(len(not_zero_index))]
-    all_bin = efeds['bins2']
-    all_bin_pair = [[[all_bin[i][j], all_bin[i][j + 1]]
-                     for j in range(len(all_bin[i]) - 1)]
-                    for i in range(len(cluster_index))]
+    all_bin_pair = [[[bins[i][j], bins[i][j + 1]]
+                     for j in range(len(bins[i]) - 1)]
+                    for i in range(len(cluster_num))]
     ndim = common_bins_dim + 4  # A, B, alpha, dm
     if p0 is None:
-        p0 = find_ini_args(common_bkg_mean_d, common_bkg_std_d, nwalkers, ndim)
+        p0 = find_ini_args(common_bkg_mean_d, common_bkg_std_d, nwalkers, ndim,
+                           mode = mode)
+    
+    #TODO(hylin): Make it compatible with/without phi model.
     partial_log_prob = partial(stacked_log_prob,
-                               obs=cluster_obs,
-                               ms_model=efeds['i_cmag'],
-                               log_mass=efeds['median_500c_lcdm'],
-                               area=efeds['area'],
+                               obs=obs_alllf,
+                               ms_model=ms_model,
+                               log_mass=log_mass,
+                               area=area,
                                common_bkg_mean_d=common_bkg_mean_d,
                                common_bkg_std_d=common_bkg_std_d,
                                common_bin_pair=common_bin_pair,
                                all_bin_pair=all_bin_pair)
+    
     if check == True:
         return partial_log_prob
     if cpu_num != 1:
@@ -606,3 +612,15 @@ def fit_band(z):
         return 'z'
     else:
         return 'y'
+
+
+def get_common_bkg_d(galaxy_index, efeds, bkg_all):
+    efeds_ = efeds[galaxy_index]
+    
+    bkg_mean_d, bkg_std_d = bkg_info(np.atleast_1d(efeds_['z']), 
+                                     bkg_all['z_list'], 
+                                     bkg_all['mean'], bkg_all['std'])
+    common_bkg_mean_d = np.mean(np.atleast_2d(bkg_mean_d), axis = 0)
+    common_bkg_std_d = ((np.sum(np.atleast_2d(bkg_std_d) ** 2, axis = 0)) ** 0.5 
+                        / len(bkg_std_d)) # mean after ^ 0.5
+    return common_bkg_mean_d, common_bkg_std_d

@@ -197,3 +197,7 @@ def cut_range(num, bin_num):
             returnme[i] = list(range(finish_num, finish_num + width))
             finish_num += width
     return returnme
+
+
+def area(r):
+    return 2 * np.pi * (1 - np.cos(r)) * u.rad**2
