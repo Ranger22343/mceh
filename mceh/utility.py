@@ -30,6 +30,8 @@ def init(*args):
             rd = QTable.read('data/modified_random_ver1.fits')
             return_dict['rd'] = rd
     returnme = [return_dict[arg] for arg in args]
+    if len(returnme) == 1:
+        returnme = returnme[0]
     return returnme
 
 
