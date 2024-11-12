@@ -20,6 +20,7 @@ multiprocessing.set_start_method('fork', force=True)
 #efeds = fits.getdata('fits_file/efeds_z01_radius_50percent.fits', ext=-1)
 #hsc = fits.getdata('fits_file/hsc_scienceFlag_i24.fits', ext=-1)
 bins = np.linspace(14, 24, 41)  #boundaries of bins
+bins2 = np.arange(10, 30.1, 0.2)
 #ndim=6
 #index = 2
 #labels = [r"$m^*_1$", r"$\phi^*_1$", r"$\alpha_1$", r"$m^*_2$", r"$\phi^*_2$", r"$\alpha_2$"]
@@ -404,7 +405,10 @@ def stacked_log_prob(p,
         common_bkg_std_d: (number_of_clusters, number_of_bins) array-like
             The standard deviation density (N/area) of LF of the random 
             background for each cluster.
-        common_bin_pair: (number_of_clusters, number_of_bin_pairs) array-like
+        common_bin_pair (array-like): The bin pairs of `common_bkg_mean_d` and
+            `common_bkg_std_d`. If the bins are [b1, b2, b3, ...], this wil be
+            [[b1, b2], [b2, b3], [b3, b4], ...].
+        all_bin_pair: (number_of_clusters, number_of_bin_pairs) array-like
             The upper and lower limit of every bin for every cluster.
             For example, for a cluster whose bins are [14, 14.25, 14.5, 14.75],
             its bin pair is [[14, 14.25], [14.25, 14.5], [14.5, 14.75]].
@@ -549,14 +553,15 @@ def cut_mag(cmag, lf, diff, bins=np.linspace(14, 24, 41)):
     new_lf = lf_func(mid_new_bins)
     return new_lf, new_bins
 
-
+# TODO(hylin): Check the usages of bins.
 def get_sampler(obs_alllf,
+                every_obs_bins,
                 common_bkg_mean_d,
                 common_bkg_std_d,
+                bkg_bins,
                 ms_model,
                 log_mass,
                 area,
-                bins=bins,
                 nwalkers=32,
                 step=10000,
                 p0=None,
@@ -580,7 +585,7 @@ def get_sampler(obs_alllf,
                        for i in range(len(not_zero_index))]
     all_bin_pair = [[[bins[i][j], bins[i][j + 1]]
                      for j in range(len(bins[i]) - 1)]
-                    for i in range(len(cluster_num))]
+                    for i in range(cluster_num)]
     ndim = common_bins_dim + 4  # A, B, alpha, dm
     if p0 is None:
         p0 = find_ini_args(common_bkg_mean_d,
@@ -617,16 +622,16 @@ def get_sampler(obs_alllf,
     return [sampler, state, zero_index]
 
 
-def fit_band(z):
+def fit_band(z_list):
     # Find the proper band for fitting for a given redshift.
-    z_ = np.atleast_1d(z)
+    z_list = np.atleast_1d(z_list)
     returnme = []
-    for rs in z_:
+    for z in z_list:
         if 0.0 < z and z < 0.35:
             returnme.append('r')
-        if 0.35 <= z and z < 0.75:
+        elif 0.35 <= z and z < 0.75:
             returnme.append('i')
-        if 0.75 <= z and z < 1.12:
+        elif 0.75 <= z and z < 1.12:
             returnme.append('z')
         else:
             returnme.append('y')
@@ -651,10 +656,11 @@ def index2fl(hsc_index, hsc, band_name, bins):
     return np.histogram(mag, bins)[0]
 
 
-def get_all_obs(efeds_index, efeds, hsc, bins):
+def get_obslf_cmag_cname(efeds_index, efeds, hsc, bins):
     #z, all_cmag, all_hsc_index
     z = efeds['Z_BEST_COMB'][efeds_index]
-    all_cmag = efeds['g_cmag', 'r_cmag', 'i_cmag', 'z_cmag', 'y_cmag'][efeds_index]
+    all_cmag = efeds['g_cmag', 'r_cmag', 'i_cmag', 'z_cmag',
+                     'y_cmag'][efeds_index]
     all_hsc_index = efeds['galaxy_index'][efeds_index]
     cluster_num = len(z)
     band = fit_band(z)
@@ -665,4 +671,16 @@ def get_all_obs(efeds_index, efeds, hsc, bins):
         for i in range(cluster_num)
     ]
     cmag = [all_cmag[cmag_band[i]][i] for i in range(cluster_num)]
-    return all_lf, cmag
+    return all_lf, cmag, band
+
+
+def zmbins_efeds_index(zbins_i, mbins_i, zbins, mbins, efeds):
+    log_m = efeds['median_500c_lcdm'].value
+    z = efeds['Z_BEST_COMB']
+    low_z, up_z = zbins[zbins_i], zbins[zbins_i + 1]
+    between_z = (z >= low_z) & (z < up_z)
+    low_m, up_m = mbins[zbins_i][mbins_i], mbins[zbins_i][mbins_i + 1]
+    between_m = ((log_m >= low_m)
+                 & (log_m < up_m))
+    is_between = between_z & between_m
+    return np.where(is_between)[0], [low_z, up_z], [low_m, up_m]
