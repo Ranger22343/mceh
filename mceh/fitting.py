@@ -1,7 +1,3 @@
-"""
-Last changed date: 2024 Oct 8
-"""
-# %%
 import numpy as np
 import emcee
 from scipy.integrate import quad
@@ -374,7 +370,6 @@ def bkg_density(z, z_list, rd_bkg_mean, rd_bkg_std):
     return [mean4z, std4z]
 
 
-# %%
 # def log_prob(p, obs, bkg, rd_bkg_mean, rd_bkg_std, bins = np.linspace(14,24,41), double = False):
 def stacked_log_prob(p,
                      obs,
@@ -575,16 +570,24 @@ def get_sampler(obs_alllf,
     common_bkg_std_d = np.delete(common_bkg_std_d, zero_index)
     cluster_num = len(obs_alllf)
 
-    # Check if any bin with bkg = 0 is contained in the bins any cluster using
-    # And this situation is what I currently don't handle
-    # Imagine every bin is labeled by the left side of the magnitude bin
-    zero_bin_left = bins[zero_index]
-
+    # Check validity of the data
+    obs_min_mag = min(np.array(every_obs_bins).flatten())
+    obs_max_mag = max(np.array(every_obs_bins).flatten())
+    bkg_min_mag = bkg_bins[not_zero_index[0]]
+    bkg_max_mag = bkg_bins[not_zero_index + 1]
+    if (obs_min_mag < bkg_min_mag) or (obs_max_mag > bkg_max_mag):
+        raise ValueError('Parts of background information are lost and ' 
+                         'extrapolation of the background is not used.')
+    if (np.diff(not_zero_index) != 1).any():
+        raise ValueError('There are bins with zero background values between '
+                         'two bins with non-zero background values.')
+    
     common_bins_dim = len(common_bkg_mean_d)
-    common_bin_pair = [[bins[not_zero_index[i]], bins[not_zero_index[i] + 1]]
+    common_bin_pair = [[bkg_bins[not_zero_index[i]], 
+                        bkg_bins[not_zero_index[i] + 1]]
                        for i in range(len(not_zero_index))]
-    all_bin_pair = [[[bins[i][j], bins[i][j + 1]]
-                     for j in range(len(bins[i]) - 1)]
+    all_bin_pair = [[[every_obs_bins[i][j], every_obs_bins[i][j + 1]]
+                     for j in range(len(every_obs_bins[i]) - 1)]
                     for i in range(cluster_num)]
     ndim = common_bins_dim + 4  # A, B, alpha, dm
     if p0 is None:
@@ -593,8 +596,6 @@ def get_sampler(obs_alllf,
                            nwalkers,
                            ndim,
                            mode=mode)
-
-    #TODO(hylin): Make it compatible with/without phi model.
     partial_log_prob = partial(stacked_log_prob,
                                obs=obs_alllf,
                                ms_model=ms_model,
