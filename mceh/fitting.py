@@ -718,30 +718,38 @@ def easy_mcmc(z_index, m_index, efeds, hsc, rd_result, zmbins):
     new_efeds = efeds[efeds['low_cont_flag']
                       & (efeds['unmasked_fraction'] > 0.6)]
     zbins, mbins = zmbins['zbins'], zmbins['mbins']
-    efeds_index, z_bound, m_bound = zmbins_efeds_index(z_index, m_index, zbins, 
+    efeds_index, z_bound, m_bound = zmbins_efeds_index(z_index, m_index, zbins,
                                                        mbins, new_efeds)
     band = fit_band(new_efeds['Z_BEST_COMB'][efeds_index])
     ms_model = efeds[band[0] + '_cmag'][efeds_index]
-    every_obs_bins = [proper_mag_bins(ms_model[i], 2, 2, 0.2) 
-                      for i in range(len(efeds_index))]
-    obs_alllf = [index2fl(efeds['galaxy_index'][efeds_index[i]], 
-                           hsc, band[0] + 'mag_cmodel', 
-                           every_obs_bins[i]) for i in range(len(efeds_index))]
-    common_bkg_mean_d = rd_result['mean_lf_d'].to(u.arcmin**-2).value
-    common_bkg_std_d = rd_result['std_lf_d'].to(u.arcmin**-2).value
+    every_obs_bins = [
+        proper_mag_bins(ms_model[i], 2, 2, 0.2)
+        for i in range(len(efeds_index))
+    ]
+    obs_alllf = [
+        index2fl(efeds['galaxy_index'][efeds_index[i]], hsc,
+                 band[0] + 'mag_cmodel', every_obs_bins[i])
+        for i in range(len(efeds_index))
+    ]
+    band_name = ['g', 'r', 'i', 'z', 'y']
+    band_index = np.where(np.array(band_name) == band[0])[0][0]
+    common_bkg_mean_d = rd_result['mean_lf_d'][band_index].to(
+        u.arcmin**-2).value
+    common_bkg_std_d = rd_result['std_lf_d'][band_index].to(u.arcmin**-2).value
     bkg_bins = bins2
     log_mass = new_efeds[efeds_index]['median_500c_lcdm'].value
     area = new_efeds[efeds_index]['area'].to(u.arcmin**2).value
     returnme = {
-        'obs_alllf': obs_alllf, 
-        'every_obs_bins': every_obs_bins, 
-        'common_bkg_mean_d': common_bkg_mean_d, 
+        'obs_alllf': obs_alllf,
+        'every_obs_bins': every_obs_bins,
+        'common_bkg_mean_d': common_bkg_mean_d,
         'common_bkg_std_d': common_bkg_std_d,
-        'bkg_bins': bkg_bins, 
-        'ms_model': ms_model, 
-        'log_mass': log_mass, 
+        'bkg_bins': bkg_bins,
+        'ms_model': ms_model,
+        'log_mass': log_mass,
         'area': area,
         'zbound': z_bound,
-        'mbound': m_bound
+        'mbound': m_bound,
+        'index': efeds_index
     }
     return returnme
