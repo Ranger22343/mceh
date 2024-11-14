@@ -164,7 +164,7 @@ def log_likelihood(p0, obs, bkg, bin_pair):
     #print('D =', D)
     if (M < 0).any():
         return -np.inf
-    iambadvalues = (M <= 0.0) & (D == 0.0)  # np.close?
+    iambadvalues = (M <= 0.0) & (np.isclose(D, 0.0))  # np.close?
     returnme_array = -M + D * np.log(M)  # will have warnings.
     returnme_array[iambadvalues] = 0.0
     returnme = np.sum(returnme_array)
@@ -445,11 +445,11 @@ def stacked_log_prob(p,
     all_bkg_std = np.multiply(all_bkg_std_d, area[:, np.newaxis])
     all_bkg = np.multiply(all_bkg_d, area[:, np.newaxis])
     lp_list = [
-        log_prior((ms_model[i] + dm, phi[i], alpha), all_bkg[i],
+        log_prior((ms_model[i] + dm, phi, alpha), all_bkg[i],
                   all_bkg_mean[i], all_bkg_std[i]) for i in range(cluster_num)
     ]  # its p = (m_s, phi_s, alpha)
     ll_list = [
-        log_likelihood((ms_model[i] + dm, phi[i], alpha), obs[i], all_bkg[i],
+        log_likelihood((ms_model[i] + dm, phi, alpha), obs[i], all_bkg[i],
                        all_bin_pair[i]) for i in range(cluster_num)
     ]
     returnme = sum(lp_list) + sum(ll_list)
@@ -548,7 +548,7 @@ def cut_mag(cmag, lf, diff, bins=np.linspace(14, 24, 41)):
     new_lf = lf_func(mid_new_bins)
     return new_lf, new_bins
 
-# TODO(hylin): Check the usages of bins.
+
 def get_sampler(obs_alllf,
                 every_obs_bins,
                 common_bkg_mean_d,
@@ -564,32 +564,46 @@ def get_sampler(obs_alllf,
                 mode='phi_model_schechter',
                 progress=False,
                 check=False):
-    zero_index = np.where(common_bkg_std_d == 0)[0]
-    not_zero_index = np.where(common_bkg_std_d != 0)[0]
-    common_bkg_mean_d = np.delete(common_bkg_mean_d, zero_index)
-    common_bkg_std_d = np.delete(common_bkg_std_d, zero_index)
+    
     cluster_num = len(obs_alllf)
 
     # Check validity of the data
     obs_min_mag = min(np.array(every_obs_bins).flatten())
     obs_max_mag = max(np.array(every_obs_bins).flatten())
+    """
     bkg_min_mag = bkg_bins[not_zero_index[0]]
-    bkg_max_mag = bkg_bins[not_zero_index + 1]
+    bkg_max_mag = bkg_bins[not_zero_index[-1] + 1]
     if (obs_min_mag < bkg_min_mag) or (obs_max_mag > bkg_max_mag):
         raise ValueError('Parts of background information are lost and ' 
                          'extrapolation of the background is not used.')
     if (np.diff(not_zero_index) != 1).any():
         raise ValueError('There are bins with zero background values between '
                          'two bins with non-zero background values.')
-    
+    common_bkg_mean_d = np.delete(common_bkg_mean_d, zero_index)
+    common_bkg_std_d = np.delete(common_bkg_std_d, zero_index)
+    """
+    lowest_used_index = np.where(bkg_bins < obs_min_mag)[0][-1]
+    highest_used_index = np.where(bkg_bins < obs_max_mag)[0][-1]
+    is_used = np.full(len(bkg_bins) - 1, False)
+    is_used[range(lowest_used_index, highest_used_index + 1)] = True
+    print('is_used =', is_used)
+    is_not_used = np.invert(is_used)
+    used_bkg_index = np.where(is_used)[0]
+    not_used_bkg_index = np.where(is_not_used)[0]
+    common_bkg_mean_d = np.delete(common_bkg_mean_d, not_used_bkg_index)
+    common_bkg_std_d = np.delete(common_bkg_std_d, not_used_bkg_index)
     common_bins_dim = len(common_bkg_mean_d)
-    common_bin_pair = [[bkg_bins[not_zero_index[i]], 
-                        bkg_bins[not_zero_index[i] + 1]]
-                       for i in range(len(not_zero_index))]
+    common_bin_pair = [[bkg_bins[used_bkg_index[i]], 
+                        bkg_bins[used_bkg_index[i] + 1]]
+                       for i in range(len(used_bkg_index))]
     all_bin_pair = [[[every_obs_bins[i][j], every_obs_bins[i][j + 1]]
                      for j in range(len(every_obs_bins[i]) - 1)]
                     for i in range(cluster_num)]
-    ndim = common_bins_dim + 4  # A, B, alpha, dm
+    if mode == 'phi_model_schechter':
+        ndim = common_bins_dim + 4  # A, B, alpha, dm
+    elif mode == 'schechter':
+        ndim = common_bins_dim + 3
+    print('ndim =', ndim)
     if p0 is None:
         p0 = find_ini_args(common_bkg_mean_d,
                            common_bkg_std_d,
@@ -620,7 +634,7 @@ def get_sampler(obs_alllf,
     else:
         sampler = emcee.EnsembleSampler(nwalkers, ndim, partial_log_prob)
         state = sampler.run_mcmc(p0, step, progress=progress)
-    return [sampler, state, zero_index]
+    return [sampler, state, is_used]
 
 
 def fit_band(z_list):
@@ -685,3 +699,16 @@ def zmbins_efeds_index(zbins_i, mbins_i, zbins, mbins, efeds):
                  & (log_m < up_m))
     is_between = between_z & between_m
     return np.where(is_between)[0], [low_z, up_z], [low_m, up_m]
+
+
+def proper_mag_bins(cmag, low_diff, up_diff, bin_width):
+    if not (np.isclose(((low_diff + up_diff) % bin_width), 0) 
+            or np.isclose(((low_diff + up_diff) % bin_width), bin_width)):
+        raise ValueError('Cannot generate new bins with the bin width same as '
+                         'input bins perfectly. Please try to adjust diff or '
+                         'bins')
+    mag_min = cmag - low_diff
+    mag_max = cmag + up_diff
+    bin_num = int((low_diff + up_diff) / bin_width)
+    new_bins = np.linspace(mag_min, mag_max, bin_num + 1)
+    return new_bins
