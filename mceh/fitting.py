@@ -10,6 +10,7 @@ import copy
 import multiprocessing
 from functools import partial
 from scipy import interpolate
+import astropy.units as u
 
 multiprocessing.set_start_method('fork', force=True)
 #Must-need parameters
@@ -445,8 +446,8 @@ def stacked_log_prob(p,
     all_bkg_std = np.multiply(all_bkg_std_d, area[:, np.newaxis])
     all_bkg = np.multiply(all_bkg_d, area[:, np.newaxis])
     lp_list = [
-        log_prior((ms_model[i] + dm, phi, alpha), all_bkg[i],
-                  all_bkg_mean[i], all_bkg_std[i]) for i in range(cluster_num)
+        log_prior((ms_model[i] + dm, phi, alpha), all_bkg[i], all_bkg_mean[i],
+                  all_bkg_std[i]) for i in range(cluster_num)
     ]  # its p = (m_s, phi_s, alpha)
     ll_list = [
         log_likelihood((ms_model[i] + dm, phi, alpha), obs[i], all_bkg[i],
@@ -564,7 +565,7 @@ def get_sampler(obs_alllf,
                 mode='phi_model_schechter',
                 progress=False,
                 check=False):
-    
+
     cluster_num = len(obs_alllf)
 
     # Check validity of the data
@@ -593,9 +594,9 @@ def get_sampler(obs_alllf,
     common_bkg_mean_d = np.delete(common_bkg_mean_d, not_used_bkg_index)
     common_bkg_std_d = np.delete(common_bkg_std_d, not_used_bkg_index)
     common_bins_dim = len(common_bkg_mean_d)
-    common_bin_pair = [[bkg_bins[used_bkg_index[i]], 
-                        bkg_bins[used_bkg_index[i] + 1]]
-                       for i in range(len(used_bkg_index))]
+    common_bin_pair = [[
+        bkg_bins[used_bkg_index[i]], bkg_bins[used_bkg_index[i] + 1]
+    ] for i in range(len(used_bkg_index))]
     all_bin_pair = [[[every_obs_bins[i][j], every_obs_bins[i][j + 1]]
                      for j in range(len(every_obs_bins[i]) - 1)]
                     for i in range(cluster_num)]
@@ -695,15 +696,14 @@ def zmbins_efeds_index(zbins_i, mbins_i, zbins, mbins, efeds):
     low_z, up_z = zbins[zbins_i], zbins[zbins_i + 1]
     between_z = (z >= low_z) & (z < up_z)
     low_m, up_m = mbins[zbins_i][mbins_i], mbins[zbins_i][mbins_i + 1]
-    between_m = ((log_m >= low_m)
-                 & (log_m < up_m))
+    between_m = ((log_m >= low_m) & (log_m < up_m))
     is_between = between_z & between_m
     return np.where(is_between)[0], [low_z, up_z], [low_m, up_m]
 
 
 def proper_mag_bins(cmag, low_diff, up_diff, bin_width):
-    if not (np.isclose(((low_diff + up_diff) % bin_width), 0) 
-            or np.isclose(((low_diff + up_diff) % bin_width), bin_width)):
+    if not (np.isclose(((low_diff + up_diff) % bin_width), 0) or np.isclose(
+        ((low_diff + up_diff) % bin_width), bin_width)):
         raise ValueError('Cannot generate new bins with the bin width same as '
                          'input bins perfectly. Please try to adjust diff or '
                          'bins')
@@ -712,3 +712,36 @@ def proper_mag_bins(cmag, low_diff, up_diff, bin_width):
     bin_num = int((low_diff + up_diff) / bin_width)
     new_bins = np.linspace(mag_min, mag_max, bin_num + 1)
     return new_bins
+
+
+def easy_mcmc(z_index, m_index, efeds, hsc, rd_result, zmbins):
+    new_efeds = efeds[efeds['low_cont_flag']
+                      & (efeds['unmasked_fraction'] > 0.6)]
+    zbins, mbins = zmbins['zbins'], zmbins['mbins']
+    efeds_index, z_bound, m_bound = zmbins_efeds_index(z_index, m_index, zbins, 
+                                                       mbins, new_efeds)
+    band = fit_band(new_efeds['Z_BEST_COMB'][efeds_index])
+    ms_model = efeds[band[0] + '_cmag'][efeds_index]
+    every_obs_bins = [proper_mag_bins(ms_model[i], 2, 2, 0.2) 
+                      for i in range(len(efeds_index))]
+    obs_alllf = [index2fl(efeds['galaxy_index'][efeds_index[i]], 
+                           hsc, band[0] + 'mag_cmodel', 
+                           every_obs_bins[i]) for i in range(len(efeds_index))]
+    common_bkg_mean_d = rd_result['mean_lf_d'].to(u.arcmin**-2).value
+    common_bkg_std_d = rd_result['std_lf_d'].to(u.arcmin**-2).value
+    bkg_bins = bins2
+    log_mass = new_efeds[efeds_index]['median_500c_lcdm'].value
+    area = new_efeds[efeds_index]['area'].to(u.arcmin**2).value
+    returnme = {
+        'obs_alllf': obs_alllf, 
+        'every_obs_bins': every_obs_bins, 
+        'common_bkg_mean_d': common_bkg_mean_d, 
+        'common_bkg_std_d': common_bkg_std_d,
+        'bkg_bins': bkg_bins, 
+        'ms_model': ms_model, 
+        'log_mass': log_mass, 
+        'area': area,
+        'zbound': z_bound,
+        'mbound': m_bound
+    }
+    return returnme
