@@ -277,7 +277,7 @@ def find_ini_args(bkg_mean_d,
     elif mode == 'schechter':
         p0_number = [30, -1, 0]
         p_var = [15, 1, 0.2]
-    total_var = np.append(p_var, bkg_std_d)
+    total_var = np.append(p_var, bkg_mean_d / 2)
     p0_number = np.append(p0_number, bkg_mean_d)
     randomization = np.random.rand(nwalkers, ndim) * 2
     randomization -= 1
