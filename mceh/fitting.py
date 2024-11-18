@@ -314,8 +314,8 @@ def find_mcmc_values(sampler, percent=(50, ), return_flat=False, quiet=False):
     for i in range(ndim):
         values.append(np.percentile(flat_samples[:, i], percent))
     values = np.array(values)
-    if len(percent) == 1:
-        values = values.flatten()
+    #if len(percent) == 1:
+    #    values = values.flatten()
     if return_flat == True:
         return values, flat_samples
     return values
@@ -425,6 +425,7 @@ def stacked_log_prob(p,
     elif mode == 'schechter':
         (phi, alpha, dm) = p[:3]
         common_bkg_d = np.array(p[3:])
+        phi = np.full(phi, cluster_num)
     if len(np.unique([len(obs), len(ms_model), len(area)])) != 1:
         raise ValueError('obs, ms_model, area, common_bkg_mean_d and'
                          'common_bkg_std_d must have the same length')
@@ -446,11 +447,11 @@ def stacked_log_prob(p,
     all_bkg_std = np.multiply(all_bkg_std_d, area[:, np.newaxis])
     all_bkg = np.multiply(all_bkg_d, area[:, np.newaxis])
     lp_list = [
-        log_prior((ms_model[i] + dm, phi, alpha), all_bkg[i], all_bkg_mean[i],
-                  all_bkg_std[i]) for i in range(cluster_num)
+        log_prior((ms_model[i] + dm, phi[i], alpha), all_bkg[i], 
+                  all_bkg_mean[i], all_bkg_std[i]) for i in range(cluster_num)
     ]  # its p = (m_s, phi_s, alpha)
     ll_list = [
-        log_likelihood((ms_model[i] + dm, phi, alpha), obs[i], all_bkg[i],
+        log_likelihood((ms_model[i] + dm, phi[i], alpha), obs[i], all_bkg[i],
                        all_bin_pair[i]) for i in range(cluster_num)
     ]
     returnme = sum(lp_list) + sum(ll_list)
@@ -558,7 +559,7 @@ def get_sampler(obs_alllf,
                 ms_model,
                 log_mass,
                 area,
-                nwalkers=32,
+                nwalkers='auto',
                 step=10000,
                 p0=None,
                 cpu_num=1,
@@ -605,6 +606,8 @@ def get_sampler(obs_alllf,
     elif mode == 'schechter':
         ndim = common_bins_dim + 3
     print('ndim =', ndim)
+    if nwalkers == 'auto':
+        nwalkers = int(ndim * 2.5)
     if p0 is None:
         p0 = find_ini_args(common_bkg_mean_d,
                            common_bkg_std_d,
