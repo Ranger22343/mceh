@@ -13,6 +13,7 @@ import astropy.coordinates as coord
 import random
 import astropy.units as u
 from astropy.table import QTable
+import tqdm
 
 
 def init(*args):
@@ -109,20 +110,18 @@ def mcmc_lf_percentile(flat_chain,
     phi_chain = fitting.phi_model(log_mass, A_chain, B_chain)
     ms_chain = ms_model + dm_chain
     # xx_value = [set1, set2, ...]
-    sf_value = np.array([
-        fitting.schechter_bins(ms_chain[i],
-                               phi_chain[i],
-                               alpha_chain[i],
-                               bins=bins) for i in range(len(flat_chain))
-    ])
+    sf_value = []
+    for i in tqdm.tqdm(range(len(flat_chain))):
+        sf_value.append(fitting.schechter_bins(ms_chain[i],
+                                               phi_chain[i],
+                                               alpha_chain[i],
+                                               bins=bins))
+    sf_value = np.array(sf_value)
     for i in zero_index:
         bkg_chain = np.insert(bkg_chain, i, 0, axis=1)
-    if bins.tolist() != fitting.bins.tolist():
-        bkg_chain = [
-            change_bins(bkg_chain[i], fitting.bins, bins)
-            for i in range(len(bkg_chain))
-        ]
-    bkg_value = [bkg_chain[i] * area for i in range(len(flat_chain))]
+    bkg_value = np.array([bkg_chain[i] * area for i in range(len(flat_chain))])
+    print('sf', np.shape(sf_value))
+    print('bkg', np.shape(bkg_value))
     lf_value = sf_value + bkg_value
     returnme = np.percentile(lf_value, percentile, axis=0)
     return returnme
@@ -203,3 +202,12 @@ def cut_range(num, bin_num):
 
 def area(r):
     return 2 * np.pi * (1 - np.cos(r)) * u.rad**2
+
+
+def is_used2bins(original_bins, is_used):
+    is_bins = np.append(is_used, False)
+    for i in range(len(is_used)):
+        if is_used[i] == True:
+            is_bins[i] = True
+            is_bins[i + 1] = True
+    return original_bins[is_bins]
