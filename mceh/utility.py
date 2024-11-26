@@ -54,7 +54,7 @@ def ordinal(num):
         num (int): The number you want to turn into an ordinal string.
 
     Returns:
-        (str): The resulting ordinal string.
+        str: The resulting ordinal string.
     """
     num_str = str(int(num))
     if num_str[-1] == '1':
@@ -74,6 +74,14 @@ def plot_step(sampler,
               show_index,
               label=['A', 'B', r'$\alpha$', r'$\Delta m$'],
               title=None):
+    """Plot the steps of the MCMC
+    
+    Args:
+        sampler (EnsembleSampler): The MCMC sampler.
+        show_index (int list): A list of paramter indicies you want to plot.
+        label (str list): A list of parameter names shown on the plot.
+        title (str): Title of the plot.
+    """
     samples = sampler.get_chain()
     fig, axes = plt.subplots(len(show_index), figsize=(10, 7), sharex=True)
     ndim = len(show_index)
@@ -97,35 +105,42 @@ def printt(*args):
 
 
 def pickle_load(file_path):
+    # Load a pickle file.
     with open(file_path, 'rb') as f:
         returnme = pickle.load(f)
     return returnme
 
 
 def pickle_dump(data, file_path):
+    # Save a pickle file.
     with open(file_path, 'wb') as f:
         pickle.dump(data, f)
 
 
-def bound_to_bin(bound):
-    returnme = bound[:-1]
-    return returnme
-
-
-def mcmc_lf_percentile(flat_chain,
-                       log_mass,
-                       ms_model,
-                       area,
-                       percentile,
-                       bins,
-                       zero_index=[]):
-    lf_value = mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, 
-                           zero_index)
-    returnme = np.percentile(lf_value, percentile, axis=0)
-    return returnme
-
-
 def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[]):
+    """Obtain the luminosity functions of every steps from a flat MCMC chain
+
+    The LF will be generated corresponding to the flat chain applying on each
+    cluster. The order will be [CH0CL0, CH0CL1, CH0CL2, ..., CH1CL0, ...] where
+    CHMCLN means the LF from Mth chain applying on the Nth clusters.
+
+    Args:
+        flat_chain (array-like): The flat chain of the MCMC.
+        log_mass (array-like): The logrithmal mass of the clusters. Note that
+            the units are not contained.
+        ms_model (array-like): The model of the characteristic magnitude.
+        area (array-like): The on-sky area of the cluters (assuming 0% masking
+            fraction).
+        bins (array-like): The (full) bins used to fit.
+        zero_index (array-like): The indicies deleted from the full bins. It
+            exists because some observations are always zero so it is not needed
+            to fit it.
+    
+    Returns:
+        ndarray: An array of LF corresponding to the chain. The order is
+            [chain 0 cluster 0, chain 0 cluster 1, chain 0 cluster 2,...,
+             chain 1 cluster 0, chain 1 cluster 1, ...].
+    """
     A_chain = flat_chain[:, 0]
     B_chain = flat_chain[:, 1]
     alpha_chain = flat_chain[:, 2]
@@ -152,12 +167,38 @@ def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[]):
     return lf_value
 
 
-def obs_alllf_error_bound(obs_alllf):
-    # every bin has its own upper/lower error bounds
-    # for single cluster
-    error = obs_alllf**0.5
-    upper, lower = obs_alllf + error, obs_alllf - error
-    return upper, lower
+def mcmc_lf_percentile(flat_chain,
+                       log_mass,
+                       ms_model,
+                       area,
+                       percentile,
+                       bins,
+                       zero_index=[]):
+    """The percentiles of the LF corresponding to the chain.
+    
+    Args:
+        flat_chain (array-like): The flat chain of the MCMC.
+        log_mass (array-like): The logrithmal mass of the clusters. Note that
+            the units are not contained.
+        ms_model (array-like): The model of the characteristic magnitude.
+        area (array-like): The on-sky area of the cluters (assuming 0% masking
+            fraction).
+        percentile (array-like): The percentiles (%) that should be returned.
+        bins (array-like): The (full) bins used to fit.
+        zero_index (array-like): The indicies deleted from the full bins. It
+            exists because some observations are always zero so it is not needed
+            to fit it.
+    
+    Returns:
+        ndarray: The LF values corresponds to the percentiles of the chain.
+            The first element corresponds to the first values in `percentile`,
+            etc.
+
+    """
+    lf_value = mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, 
+                           zero_index)
+    returnme = np.percentile(lf_value, percentile, axis=0)
+    return returnme
 
 
 def change_bins(y, old_bin, new_bin):
@@ -178,7 +219,7 @@ def cut_range(num, bin_num):
         num (int): Length of the numbers (start at 0).
         bin_num (int): Number of bins to ditribute the numbers.
     Returns:
-        (list): Every element represents the numbers in this bin. 
+        list: Every element represents the numbers in this bin. 
             Ex: [[0, 1, 2], [3, 4, 5], [6, 7]]
     """
     returnme = [[] for i in range(bin_num)]
@@ -197,10 +238,12 @@ def cut_range(num, bin_num):
 
 
 def area(r):
+    # The on-sky circular area by a given radius.
     return 2 * np.pi * (1 - np.cos(r)) * u.rad**2
 
 
 def is_used2bins(original_bins, is_used):
+    # Give the right bins by `is_used` list offered by the `get_sampler()`.
     is_bins = np.append(is_used, False)
     for i in range(len(is_used)):
         if is_used[i] == True:

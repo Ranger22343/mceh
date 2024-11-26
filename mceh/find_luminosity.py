@@ -283,7 +283,6 @@ def nonoverlapping_random_point(number,
         step (bool): Whether it should print the finish of each try.
     
     Returns:
-        
         ((`number`,) Quantity, (`number`,) Quantity, (`number`,) ndarray)
         The RA/DEC/unmasked_coverage of the random points.
     """

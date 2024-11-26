@@ -64,34 +64,31 @@ def isbin_by_bound(bin, bound, mode='close'):
     
     More more information. Please see the Returns part.
 
-    Args
-    ----
-    bin: the bin you want to calibrate.
-    bound: an 2D array-like object which first element is the lower bound and
-        the second element is the upper bound.
-    mode:
-        'close': the upper bound and the lower bound of the output array will be
-            determined by the elements in `bin` which are the closest to `bound`.
-            Every element of output corresponds to `bin` within the bounds will 
-            be True and the otehrs are False.
-            
-            If there are multiple elements meet this condition, the lower bound
-            will choose the first qualified one, while the upper bound will
-            choose the last qualified one. 
-            ex:
-            in: bin = [1,3,5,7,9] bound = [2.6,6.8]
-            out: [False, True, True, True, False] 
+    Args:
+        bin: the bin you want to calibrate.
+        bound: an 2D array-like object which first element is the lower bound 
+            and the second element is the upper bound.
+        mode:
+            'close': the upper bound and the lower bound of the output array 
+                will be determined by the elements in `bin` which are the 
+                closest to `bound`. Every element of output corresponds to `bin` 
+                within the bounds will be True and the otehrs are False.
+                
+                If there are multiple elements meet this condition, the lower 
+                bound will choose the first qualified one, while the upper bound 
+                will choose the last qualified one. 
+                ex:
+                in: bin = [1,3,5,7,9] bound = [2.6,6.8]
+                out: [False, True, True, True, False] 
 
-            in: bin = [1,3,5,7,9] bound = [2,6]
-            out: [True, True, True, True False]
-                    
-        'contain': the upper bound and the lower bound of the output array will 
-            be determined by the elements in `bin` which cover `bound`.
+                in: bin = [1,3,5,7,9] bound = [2,6]
+                out: [True, True, True, True False]
+                        
+            'contain': the upper bound and the lower bound of the output array 
+                will be determined by the elements in `bin` which cover `bound`.
     
-    Returns
-    -------
-    An boolean array based on the mode.
-    
+    Returns:
+        boolean array: Based on the mode.
     """
     bin = np.array(bin)
     if np.shape(bound) == (2, ):
@@ -128,20 +125,6 @@ def schechter_bins(m_s, phi_s, alpha, bins=np.linspace(
     return result
 
 
-def schechter_bin_m(m, m_s, phi_s, alpha):
-    bins_center = bins[:-1] + np.diff(bins) / 2
-    for i in range(len(bins)):
-        if bins[i] <= m <= bins[i + 1]:
-            in_bin_index = i
-            break
-    returnme = quad(schechter,
-                    bins[in_bin_index],
-                    bins[in_bin_index + 1],
-                    args=(m_s, phi_s, alpha))[0]
-    return returnme
-
-
-# %%
 def log_likelihood(p0, obs, bkg, bin_pair):
     m_s, phi_s, alpha = p0
     #print('m_s, phi_s, alpha =', p0)
@@ -173,7 +156,6 @@ def log_likelihood(p0, obs, bkg, bin_pair):
     return returnme
 
 
-# %%
 def log_gauss_value(mean, std, int_range):
 
     def gauss_d(x):
