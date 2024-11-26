@@ -44,6 +44,13 @@ The generating code is `generate_modified_efeds_ver7.ipynb`.
 - Add the code of I-Non's characteristic magnitude model called `rsmodel`
 - Add a column `unmasked_fraction`
 
+## eFEDS Ver.8
+The data name is `modified_efeds_ver8.fits`.
+The generating code is `generate_modified_efeds_ver8.ipynb`.
+`modified_efeds_ver7.fits` and `eFEDS_c001_main_ctp_clus_v2.1.fits` are needed.
+`mceh` version is `3.0.0`.
+- Add a column `SIGMA_Z_BEST_COMB`
+
 # HSC
 ## Original
 The original data is called `429561.fits`, which is from [the HSP-SSP data release website](https://hsc-release.mtk.nao.ac.jp/doc/index.php/data-access__pdr3/). Use the `CAS Search` entry and the SQL (`hsc.sql`) is saved in the same directory as this markdown file.
