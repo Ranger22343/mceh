@@ -17,6 +17,17 @@ import tqdm
 
 
 def init(*args):
+    """Load frequent-used data
+    
+    Load frequent-used data containing eFEDS('efeds'), HSC('hsc') and 
+    random('rd').
+
+    Args:
+        *args: The data you want to load. Options are 'efeds', 'hsc' and 'rd'.
+    
+    Returns:
+        The corresponding data.
+    """
     return_dict = {}
     for arg in args:
         if arg == 'efeds':
@@ -37,6 +48,14 @@ def init(*args):
 
 
 def ordinal(num):
+    """Turn an integer into an ordinal string.
+    
+    Args:
+        num (int): The number you want to turn into an ordinal string.
+
+    Returns:
+        (str): The resulting ordinal string.
+    """
     num_str = str(int(num))
     if num_str[-1] == '1':
         returnme = num_str + 'st'
@@ -100,58 +119,35 @@ def mcmc_lf_percentile(flat_chain,
                        percentile,
                        bins,
                        zero_index=[]):
-    # percentile of the Schethcer functions.
-    # for single cluster
-    A_chain = flat_chain[:, 0]
-    B_chain = flat_chain[:, 1]
-    alpha_chain = flat_chain[:, 2]
-    dm_chain = flat_chain[:, 3]
-    bkg_chain = flat_chain[:, 4:]
-    phi_chain = fitting.phi_model(log_mass, A_chain, B_chain)
-    ms_chain = ms_model + dm_chain
-    # xx_value = [set1, set2, ...]
-    sf_value = []
-    for i in tqdm.tqdm(range(len(flat_chain))):
-        sf_value.append(fitting.schechter_bins(ms_chain[i],
-                                               phi_chain[i],
-                                               alpha_chain[i],
-                                               bins=bins))
-    sf_value = np.array(sf_value)
-    for i in zero_index:
-        bkg_chain = np.insert(bkg_chain, i, 0, axis=1)
-    bkg_value = np.array([bkg_chain[i] * area for i in range(len(flat_chain))])
-    print('sf', np.shape(sf_value))
-    print('bkg', np.shape(bkg_value))
-    lf_value = sf_value + bkg_value
+    lf_value = mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, 
+                           zero_index)
     returnme = np.percentile(lf_value, percentile, axis=0)
     return returnme
 
 
 def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[]):
-    # percentile of the Schethcer functions.
-    # for single cluster
     A_chain = flat_chain[:, 0]
     B_chain = flat_chain[:, 1]
     alpha_chain = flat_chain[:, 2]
     dm_chain = flat_chain[:, 3]
     bkg_chain = flat_chain[:, 4:]
-    phi_chain = fitting.phi_model(log_mass, A_chain, B_chain)
-    ms_chain = ms_model + dm_chain
-    # xx_value = [set1, set2, ...]
-    sf_value = np.array([
-        fitting.schechter_bins(ms_chain[i],
-                               phi_chain[i],
-                               alpha_chain[i],
-                               bins=bins) for i in range(len(flat_chain))
-    ])
+    phi_chain = np.array([fitting.phi_model(log_mass, A, B)
+                          for A, B in zip(A_chain, B_chain)]).flatten()
+    ms_chain = np.array([ms_model + dm for dm in dm_chain]).flatten()
+    cnum = len(log_mass)
+    new_alpha_chain = np.array([np.full(cnum, alpha) for alpha in alpha_chain]
+                               ).flatten()
+    sf_value = []
+    # [c0AB0, c1AB0, c2AB0, ..., c0AB1, c1AB1, ..., ...]
+    for i in tqdm.tqdm(range(len(new_alpha_chain))):
+        sf_value.append(fitting.schechter_bins(ms_chain[i],
+                                               phi_chain[i],
+                                               new_alpha_chain[i],
+                                               bins=bins))
     for i in zero_index:
         bkg_chain = np.insert(bkg_chain, i, 0, axis=1)
-    if bins.tolist() != fitting.bins.tolist():
-        bkg_chain = [
-            change_bins(bkg_chain[i], fitting.bins, bins)
-            for i in range(len(bkg_chain))
-        ]
-    bkg_value = [bkg_chain[i] * area for i in range(len(flat_chain))]
+    bkg_value = np.array([bkg_chain[i] * area[j] for i in range(len(flat_chain)) 
+                          for j in range(len(area))])
     lf_value = sf_value + bkg_value
     return lf_value
 

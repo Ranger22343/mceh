@@ -13,13 +13,9 @@ from scipy import interpolate
 import astropy.units as u
 
 multiprocessing.set_start_method('fork', force=True)
-#Must-need parameters
-#efeds = fits.getdata('fits_file/efeds_z01_radius_50percent.fits', ext=-1)
-#hsc = fits.getdata('fits_file/hsc_scienceFlag_i24.fits', ext=-1)
 bins = np.linspace(14, 24, 41)  #boundaries of bins
 bins2 = np.arange(10, 30.1, 0.2)
-#ndim=6
-#index = 2
+mbins2 = bins2[:-1] / 2 + bins2[1:] / 2
 #labels = [r"$m^*_1$", r"$\phi^*_1$", r"$\alpha_1$", r"$m^*_2$", r"$\phi^*_2$", r"$\alpha_2$"]
 
 
