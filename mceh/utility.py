@@ -31,7 +31,7 @@ def init(*args):
     return_dict = {}
     for arg in args:
         if arg == 'efeds':
-            efeds = QTable.read('data/modified_efeds_ver7.fits')
+            efeds = QTable.read('data/modified_efeds_ver8.fits')
             return_dict['efeds'] = efeds
         if arg == 'hsc':
             hsc = QTable.read(
@@ -117,7 +117,8 @@ def pickle_dump(data, file_path):
         pickle.dump(data, f)
 
 
-def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[]):
+def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[],
+                progress=True):
     """Obtain the luminosity functions of every steps from a flat MCMC chain
 
     The LF will be generated corresponding to the flat chain applying on each
@@ -135,6 +136,7 @@ def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[]):
         zero_index (array-like): The indicies deleted from the full bins. It
             exists because some observations are always zero so it is not needed
             to fit it.
+        progress (bool): Whether the progress bar is shown.
     
     Returns:
         ndarray: An array of LF corresponding to the chain. The order is
@@ -154,7 +156,11 @@ def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[]):
                                ).flatten()
     sf_value = []
     # [c0AB0, c1AB0, c2AB0, ..., c0AB1, c1AB1, ..., ...]
-    for i in tqdm.tqdm(range(len(new_alpha_chain))):
+    if progress == True:
+        rg = tqdm.tqdm(range(len(new_alpha_chain)))
+    else:
+        rg = range(len(new_alpha_chain))
+    for i in rg:
         sf_value.append(fitting.schechter_bins(ms_chain[i],
                                                phi_chain[i],
                                                new_alpha_chain[i],

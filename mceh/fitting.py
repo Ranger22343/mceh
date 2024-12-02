@@ -255,6 +255,9 @@ def find_ini_args(bkg_mean_d,
     elif mode == 'schechter':
         p0_number = [30, -1, 0]
         p_var = [15, 1, 0.2]
+    elif mode == 'zm_model_schechter':
+        p0_number = [30, 1, -1, 0, 0, 0, 0]
+        p_var = [15, 0.2, 1, 0.2, 0.2, 0.2, 0.2]
     total_var = np.append(p_var, bkg_mean_d / 2)
     p0_number = np.append(p0_number, bkg_mean_d)
     randomization = np.random.rand(nwalkers, ndim) * 2
@@ -316,26 +319,36 @@ def make_group(efeds, z_bound, m_bound):
     return index_list
 
 
-def phi_model(log_M, A: float, B: float) -> float:
+def phi_model(log_M, A, B):
     """The predicted phi in the Schechter function.
     
     The predicted phi in the Schechter function. phi = A * (M / M_piv) ** B.
 
     Args:
-        log_M: (numbet_of_clusters,) array-like
-            log(Mass of the clusters/(M_sun/h)).
-        A: float
-            A parameter of the model.
-        B: float
-            A parameter of the model.
+        log_M (array-like): log(Mass of the clusters/(M_sun/h)).
+        A (float): A parameter of the model.
+        B (float): A parameter of the model.
     
     Retruns:
-        float
-        The predicted phi.
+        float: The predicted phi.
     """
     M_piv = 10**14  #10^14 M_sun/h
     M = 10**np.array(log_M)
     return A * (M / M_piv)**B
+
+
+def phi_model_mz(log_M, z, A, B, C):
+    M_piv = 10**14  #10^14 M_sun/h
+    z_piv = 0.4
+    M = 10**np.array(log_M)
+    return A * (M / M_piv)**B * ((1 + z) / (1 + z_piv))**C
+
+
+def alpha_model_mz(log_M, z, alpha0, D, E):
+    M_piv = 10**14  #10^14 M_sun/h
+    z_piv = 0.4
+    M = 10**np.array(log_M)
+    return alpha0 * (M / M_piv)**D * ((1 + z) / (1 + z_piv))**E
 
 
 def bkg_density(z, z_list, rd_bkg_mean, rd_bkg_std):
@@ -359,6 +372,7 @@ def stacked_log_prob(p,
                      common_bkg_std_d,
                      common_bin_pair,
                      all_bin_pair,
+                     z,
                      mode='phi_model_schechter'):
     """The sum of the logarithmic probability of the group of clusters. 
 
@@ -386,6 +400,7 @@ def stacked_log_prob(p,
             The upper and lower limit of every bin for every cluster.
             For example, for a cluster whose bins are [14, 14.25, 14.5, 14.75],
             its bin pair is [[14, 14.25], [14.25, 14.5], [14.5, 14.75]].
+        z (array-like): Redshift of the clusters.
     
     Returns:
         float
@@ -400,10 +415,17 @@ def stacked_log_prob(p,
         (A, B, alpha, dm) = p[:4]
         common_bkg_d = np.array(p[4:])
         phi = phi_model(log_mass, A, B)
+        alpha = np.full(alpha, cluster_num)
     elif mode == 'schechter':
         (phi, alpha, dm) = p[:3]
         common_bkg_d = np.array(p[3:])
         phi = np.full(phi, cluster_num)
+        alpha = np.full(alpha, cluster_num)
+    elif mode == 'zm_model_schechter':
+        (A, B, alpha0, dm, C, D, E) = p[:7]
+        common_bkg_d = np.array(p[7:])
+        phi = phi_model_mz(log_mass, z, A, B, C)
+        alpha = alpha_model_mz(log_mass, z, alpha0, D, E)
     if len(np.unique([len(obs), len(ms_model), len(area)])) != 1:
         raise ValueError('obs, ms_model, area, common_bkg_mean_d and'
                          'common_bkg_std_d must have the same length')
@@ -425,11 +447,11 @@ def stacked_log_prob(p,
     all_bkg_std = np.multiply(all_bkg_std_d, area[:, np.newaxis])
     all_bkg = np.multiply(all_bkg_d, area[:, np.newaxis])
     lp_list = [
-        log_prior((ms_model[i] + dm, phi[i], alpha), all_bkg[i], 
+        log_prior((ms_model[i] + dm, phi[i], alpha[i]), all_bkg[i],
                   all_bkg_mean[i], all_bkg_std[i]) for i in range(cluster_num)
     ]  # its p = (m_s, phi_s, alpha)
     ll_list = [
-        log_likelihood((ms_model[i] + dm, phi[i], alpha), obs[i], all_bkg[i],
+        log_likelihood((ms_model[i] + dm, phi[i], alpha[i]), obs[i], all_bkg[i],
                        all_bin_pair[i]) for i in range(cluster_num)
     ]
     returnme = sum(lp_list) + sum(ll_list)
@@ -537,6 +559,7 @@ def get_sampler(obs_alllf,
                 ms_model,
                 log_mass,
                 area,
+                z,
                 nwalkers='auto',
                 step=10000,
                 p0=None,
@@ -583,6 +606,8 @@ def get_sampler(obs_alllf,
         ndim = common_bins_dim + 4  # A, B, alpha, dm
     elif mode == 'schechter':
         ndim = common_bins_dim + 3
+    elif mode == 'zm_model_schechter':
+        ndim = common_bins_dim + 7
     print('ndim =', ndim)
     if nwalkers == 'auto':
         nwalkers = int(ndim * 2.5)
@@ -597,6 +622,7 @@ def get_sampler(obs_alllf,
                                ms_model=ms_model,
                                log_mass=log_mass,
                                area=area,
+                               z=z,
                                common_bkg_mean_d=common_bkg_mean_d,
                                common_bkg_std_d=common_bkg_std_d,
                                common_bin_pair=common_bin_pair,
@@ -695,31 +721,28 @@ def proper_mag_bins(cmag, low_diff, up_diff, bin_width):
     return new_bins
 
 
-def easy_mcmc(z_index, m_index, efeds, hsc, rd_result, zmbins):
+def pre_mcmc_dict(efeds_index, efeds, hsc, rd_result, band): # band = g r i z y
     new_efeds = efeds[efeds['low_cont_flag']
                       & (efeds['unmasked_fraction'] > 0.6)]
-    zbins, mbins = zmbins['zbins'], zmbins['mbins']
-    efeds_index, z_bound, m_bound = zmbins_efeds_index(z_index, m_index, zbins,
-                                                       mbins, new_efeds)
-    band = fit_band(new_efeds['Z_BEST_COMB'][efeds_index])
-    ms_model = efeds[band[0] + '_cmag'][efeds_index]
+    ms_model = efeds[band + '_cmag'][efeds_index]
     every_obs_bins = [
         proper_mag_bins(ms_model[i], 2, 2, 0.2)
         for i in range(len(efeds_index))
     ]
     obs_alllf = [
         index2fl(efeds['galaxy_index'][efeds_index[i]], hsc,
-                 band[0] + 'mag_cmodel', every_obs_bins[i])
+                 band + 'mag_cmodel', every_obs_bins[i])
         for i in range(len(efeds_index))
     ]
     band_name = ['g', 'r', 'i', 'z', 'y']
-    band_index = np.where(np.array(band_name) == band[0])[0][0]
+    band_index = np.where(np.array(band_name) == band)[0][0]
     common_bkg_mean_d = rd_result['mean_lf_d'][band_index].to(
         u.arcmin**-2).value
     common_bkg_std_d = rd_result['std_lf_d'][band_index].to(u.arcmin**-2).value
     bkg_bins = bins2
     log_mass = new_efeds[efeds_index]['median_500c_lcdm'].value
     area = new_efeds[efeds_index]['area'].to(u.arcmin**2).value
+    z = new_efeds[efeds_index]['Z_BEST_COMB'].value
     returnme = {
         'obs_alllf': obs_alllf,
         'every_obs_bins': every_obs_bins,
@@ -729,8 +752,22 @@ def easy_mcmc(z_index, m_index, efeds, hsc, rd_result, zmbins):
         'ms_model': ms_model,
         'log_mass': log_mass,
         'area': area,
-        'zbound': z_bound,
-        'mbound': m_bound,
-        'index': efeds_index
+        #'zbound': z_bound,
+        #'mbound': m_bound,
+        'index': efeds_index,
+        'z': z
     }
+    return returnme
+
+
+def easy_mcmc(z_index, m_index, efeds, hsc, rd_result, zmbins):
+    new_efeds = efeds[efeds['low_cont_flag']
+                      & (efeds['unmasked_fraction'] > 0.6)]
+    zbins, mbins = zmbins['zbins'], zmbins['mbins']
+    efeds_index, z_bound, m_bound = zmbins_efeds_index(z_index, m_index, zbins,
+                                                       mbins, new_efeds)
+    band = fit_band(new_efeds['Z_BEST_COMB'][efeds_index])
+    returnme = pre_mcmc_dict(efeds_index, new_efeds, hsc, rd_result, band[0])
+    returnme['zbound'] = z_bound
+    returnme['mbound'] = m_bound
     return returnme
