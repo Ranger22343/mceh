@@ -117,8 +117,8 @@ def pickle_dump(data, file_path):
         pickle.dump(data, f)
 
 
-def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[],
-                progress=True):
+def mcmc_lf_all(flat_chain, log_mass, z, ms_model, area, bins, zero_index,
+                progress=True, mode='phi_model_schechter'):
     """Obtain the luminosity functions of every steps from a flat MCMC chain
 
     The LF will be generated corresponding to the flat chain applying on each
@@ -129,6 +129,7 @@ def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[],
         flat_chain (array-like): The flat chain of the MCMC.
         log_mass (array-like): The logrithmal mass of the clusters. Note that
             the units are not contained.
+        z (array-like): The redshift of the clusters.
         ms_model (array-like): The model of the characteristic magnitude.
         area (array-like): The on-sky area of the cluters (assuming 0% masking
             fraction).
@@ -143,17 +144,35 @@ def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[],
             [chain 0 cluster 0, chain 0 cluster 1, chain 0 cluster 2,...,
              chain 1 cluster 0, chain 1 cluster 1, ...].
     """
-    A_chain = flat_chain[:, 0]
-    B_chain = flat_chain[:, 1]
-    alpha_chain = flat_chain[:, 2]
-    dm_chain = flat_chain[:, 3]
-    bkg_chain = flat_chain[:, 4:]
-    phi_chain = np.array([fitting.phi_model(log_mass, A, B)
-                          for A, B in zip(A_chain, B_chain)]).flatten()
-    ms_chain = np.array([ms_model + dm for dm in dm_chain]).flatten()
     cnum = len(log_mass)
-    new_alpha_chain = np.array([np.full(cnum, alpha) for alpha in alpha_chain]
-                               ).flatten()
+    if mode == 'phi_model_schechter':
+        A_chain = flat_chain[:, 0]
+        B_chain = flat_chain[:, 1]
+        alpha_chain = flat_chain[:, 2]
+        dm_chain = flat_chain[:, 3]
+        bkg_chain = flat_chain[:, 4:]
+        phi_chain = np.array([fitting.phi_model(log_mass, A, B)
+                            for A, B in zip(A_chain, B_chain)]).flatten()
+        ms_chain = np.array([ms_model + dm for dm in dm_chain]).flatten()
+        new_alpha_chain = np.array([np.full(cnum, alpha) 
+                                    for alpha in alpha_chain]).flatten()
+    elif mode == 'zm_model_schechter':
+        A_chain = flat_chain[:, 0]
+        B_chain = flat_chain[:, 1]
+        alpha0_chain = flat_chain[:, 2]
+        dm_chain = flat_chain[:, 3]
+        C_chain = flat_chain[:, 4]
+        D_chain = flat_chain[:, 5]
+        E_chain = flat_chain[:, 6]
+        bkg_chain = flat_chain[:, 7:]
+        phi_chain = np.array([fitting.phi_model_mz(log_mass, z, A, B, C)
+                            for A, B, C in zip(A_chain, B_chain, C_chain)]
+                            ).flatten()
+        ms_chain = np.array([ms_model + dm for dm in dm_chain]).flatten()
+        new_alpha_chain = np.array([
+            fitting.alpha_model_mz(log_mass, z, alpha0, D, E) 
+            for alpha0, D, E in zip(alpha0_chain, D_chain, E_chain)
+            ]).flatten()
     sf_value = []
     # [c0AB0, c1AB0, c2AB0, ..., c0AB1, c1AB1, ..., ...]
     if progress == True:
@@ -175,6 +194,7 @@ def mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, zero_index=[],
 
 def mcmc_lf_percentile(flat_chain,
                        log_mass,
+                       z,
                        ms_model,
                        area,
                        percentile,
@@ -186,6 +206,7 @@ def mcmc_lf_percentile(flat_chain,
         flat_chain (array-like): The flat chain of the MCMC.
         log_mass (array-like): The logrithmal mass of the clusters. Note that
             the units are not contained.
+        z (array-like): The redshift of the clusters.
         ms_model (array-like): The model of the characteristic magnitude.
         area (array-like): The on-sky area of the cluters (assuming 0% masking
             fraction).
@@ -201,7 +222,7 @@ def mcmc_lf_percentile(flat_chain,
             etc.
 
     """
-    lf_value = mcmc_lf_all(flat_chain, log_mass, ms_model, area, bins, 
+    lf_value = mcmc_lf_all(flat_chain, log_mass, z, ms_model, area, bins, 
                            zero_index)
     returnme = np.percentile(lf_value, percentile, axis=0)
     return returnme

@@ -724,18 +724,23 @@ def proper_mag_bins(cmag, low_diff, up_diff, bin_width):
 def pre_mcmc_dict(efeds_index, efeds, hsc, rd_result, band): # band = g r i z y
     new_efeds = efeds[efeds['low_cont_flag']
                       & (efeds['unmasked_fraction'] > 0.6)]
-    ms_model = efeds[band + '_cmag'][efeds_index]
+    cnum = len(efeds_index)
+    if len(np.atleast_1d(band)) == 1:
+        band = np.full(len(efeds_index), band)
+    ms_model = np.array([efeds[band[i] + '_cmag'][efeds_index[i]]
+                         for i in range(cnum)])
     every_obs_bins = [
         proper_mag_bins(ms_model[i], 2, 2, 0.2)
-        for i in range(len(efeds_index))
+        for i in range(cnum)
     ]
     obs_alllf = [
         index2fl(efeds['galaxy_index'][efeds_index[i]], hsc,
-                 band + 'mag_cmodel', every_obs_bins[i])
-        for i in range(len(efeds_index))
+                 band[i] + 'mag_cmodel', every_obs_bins[i])
+        for i in range(cnum)
     ]
     band_name = ['g', 'r', 'i', 'z', 'y']
-    band_index = np.where(np.array(band_name) == band)[0][0]
+    band_index = [np.where(np.array(band_name) == band[i])[0][0]
+                  for i in range(cnum)]
     common_bkg_mean_d = rd_result['mean_lf_d'][band_index].to(
         u.arcmin**-2).value
     common_bkg_std_d = rd_result['std_lf_d'][band_index].to(u.arcmin**-2).value
