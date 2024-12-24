@@ -83,3 +83,8 @@ The modifications are:
 # eFEDSmasstable
 
 The data is called `eFEDSmasstable.fits` and it's from [I-Non's website](https://inonchiu.github.io/eFEDScosmology_chiu22/).
+
+# Background
+
+The generating codes are in `generate_background` folder. `get_bkg20241109.py` is the first code and `20241111.ipynb` is the second one and needs data generated from the first code.
+`mceh` version is `3.0.0`.
