@@ -5,9 +5,11 @@ import multiprocessing
 import functools
 from scipy import interpolate
 import astropy.units as u
+import os
 
+os.environ["OMP_NUM_THREADS"] = "1"
 multiprocessing.set_start_method('fork', force=True)
-BINS = np.arange(10, 30.1, 0.2)  #boundaries of bins
+BINS = np.arange(10, 30.1, 0.2)  # Boundaries of bins
 MBINS = BINS[:-1] / 2 + BINS[1:] / 2
 DIFF_BINS = np.arange(-2, 2.1, 0.2)
 DIFF_MBINS = (DIFF_BINS[:-1] + DIFF_BINS[1:]) / 2
@@ -16,17 +18,21 @@ DIFF_MBINS = (DIFF_BINS[:-1] + DIFF_BINS[1:]) / 2
 # alpha = alpha0 * fD(M) * fE(z)
 # dm = dm0 * fF(M) * fG(z)
 ARG_NUM = 9
+LABELS = [r'$\phi_0$', r'$\beta_\phi$', r'$\alpha_0$', 
+          r'$\Delta m_0$', r'$\gamma_\phi$', r'$\beta_\alpha$', 
+          r'$\gamma_\alpha$', r'$\beta_{m}$', r'$\gamma_{m}$']
 
 # lambda function cannnot go across cpu, so I created it.
-def none_func(*args, **kwargs):
-    return None
+def nan_func(*args, **kwargs):
+    return np.nan
+
 
 def schechter(m, m_s, phi_s, alpha):
     return 0.4 * np.log(10) * phi_s * (10**(0.4 * (m_s - m)))**(
         alpha + 1) * np.exp(-10**(0.4 * (m_s - m)))
 
 
-def schechter_bins(m_s, phi_s, alpha, bins=BINS):  
+def schechter_bins(m_s, phi_s, alpha, bins=BINS):
     #the number in each bin estimated by Schechter function
     result = []
     for i in range(len(bins) - 1):
@@ -39,7 +45,7 @@ def schechter_bins(m_s, phi_s, alpha, bins=BINS):
     return result
 
 
-def log_likelihood(p0, obs, bkg, bin_pair):
+def log_likelihood(p0, obs, bkg, bin_pair, unmasked_fraction):
     m_s, phi_s, alpha = p0
     #print('m_s, phi_s, alpha =', p0)
     if (bkg < 0).any():
@@ -51,11 +57,11 @@ def log_likelihood(p0, obs, bkg, bin_pair):
                        bins=[bin_pair[i][0], bin_pair[i][1]])
         for i in range(len(bin_pair))
     ]).flatten()
-    M = S + bkg
+    M = (S + bkg) * unmasked_fraction
     D = obs
     if (M < 0).any():
         return -np.inf
-    iambadvalues = (M <= 0.0) & (np.isclose(D, 0.0))  # np.close?
+    iambadvalues = (M <= 0.0) & (np.isclose(D, 0.0))
     returnme_array = -M + D * np.log(M)  # will have warnings.
     returnme_array[iambadvalues] = 0.0
     returnme = np.sum(returnme_array)
@@ -172,6 +178,7 @@ def stacked_log_prob(
         ms_model,
         log_mass,
         area,
+        unmasked_fraction,
         obs_bin_pair,
         band_index,  # 0=g, 1=r, 2=i, 3=z, 4=y
         bkg_d_mean_func_list,
@@ -188,6 +195,7 @@ def stacked_log_prob(
         ms_model (array-like): The characeristic magnitude of the clusters.
         log_mass (array-like): log(mass_of_the_clusters/(M_sun/h)).
         area (ndarray): Area (dimensionless) of the clusters.
+        unmaksed_fraction (array-like): The unmasked fraction of the clusters.
         obs_bin_pair (ndarray): (cluNum, 2) array. The lower/upper bounds of
             the cluster bins.
         band_index (array-like): The band each cluster uses. 1/2/3/4/5 stands
@@ -211,7 +219,7 @@ def stacked_log_prob(
     (A, B, alpha0, dm0, C, D, E, F, G) = p[:ARG_NUM]
     common_bkg_d_raw = np.array(
         p[ARG_NUM:]
-    )  # TODO(hylin): I need to figure out a way to distinguish bands of bkg parameters
+    )
     common_bkg_d = []
     n = 0
     for i in range(5):
@@ -231,11 +239,10 @@ def stacked_log_prob(
     bkg_d_func_list = []
     for i in range(band_num):
         if len(common_bkg_d[i]) == 0:
-            bkg_d_func_list.append(none_func)
+            bkg_d_func_list.append(nan_func)
         else:
             bkg_d_func_list.append(
-                interpolate.interp1d(common_mid_bins[i], common_bkg_d[i])
-            )
+                interpolate.interp1d(common_mid_bins[i], common_bkg_d[i]))
     for i in range(cluster_num):
         band = band_index[i]
         this_bkg_mean_d_func = bkg_d_mean_func_list[band]
@@ -254,7 +261,8 @@ def stacked_log_prob(
     ]  # its p = (m_s, phi_s, alpha)
     ll_list = [
         log_likelihood((ms_model[i] + dm[i], phi[i], alpha[i]), obs[i],
-                       all_bkg[i], obs_bin_pair[i]) for i in range(cluster_num)
+                       all_bkg[i], obs_bin_pair[i], unmasked_fraction[i])
+        for i in range(cluster_num)
     ]
     returnme = sum(lp_list) + sum(ll_list)
     if np.isnan(returnme).any() == True:
@@ -273,6 +281,7 @@ def get_sampler(
         log_mass,
         area,
         z,
+        unmasked_fraction,
         nwalkers='auto',
         step=10000,
         p0=None,
@@ -304,6 +313,7 @@ def get_sampler(
             cluster.
         area (ndarray): Area (dimensionless) of the clusters.
         z (array-like): Redshift of the clusters.
+        unmasked_fraction (array-like): The unmasked fraction of the clusters.
         nwalkers (int or str): Number of walkers. If 'auto', this number will
             be automatically chosen (2.5 * number of parameters).
         step (int): The number of steps the MCMC will go through.
@@ -367,8 +377,8 @@ def get_sampler(
     for i in range(band_num):
         if len(common_bin_pair[i]) == 0:
             common_mid_bins.append([])
-            bkg_d_mean_func_list.append(none_func)
-            bkg_d_std_func_list.append(none_func)
+            bkg_d_mean_func_list.append(nan_func)
+            bkg_d_std_func_list.append(nan_func)
         else:
             common_mid_bins.append(np.mean(common_bin_pair[i], axis=1))
             bkg_d_mean_func_list.append(
@@ -384,6 +394,7 @@ def get_sampler(
         ms_model=ms_model,
         log_mass=log_mass,
         area=area,
+        unmasked_fraction=unmasked_fraction,
         obs_bin_pair=obs_bin_pair,
         band_index=band_index,
         bkg_d_mean_func_list=bkg_d_mean_func_list,
@@ -392,7 +403,6 @@ def get_sampler(
         common_mid_bins=common_mid_bins,
         z=z,
         bkg_bins_num=bkg_bins_num)
-
     if cpu_num != 1:
         with multiprocessing.Pool(cpu_num) as pool:
             sampler = emcee.EnsembleSampler(nwalkers,
@@ -489,13 +499,22 @@ def easy_mcmc(efeds_index, efeds, hsc, rd_result):  # band = g r i z y
                  band[i] + 'mag_cmodel', every_obs_bins[i])
         for i in range(cnum)
     ]
+    obs_alllf_corrected = [
+        index2fl(efeds['galaxy_index'][efeds_index[i]], hsc,
+                 band[i] + 'mag_cmodel', 
+                 every_obs_bins[i]) 
+                 / efeds['unmasked_fraction'][efeds_index[i]]
+        for i in range(cnum)
+    ]
     common_bkg_mean_d = rd_result['mean_lf_d'].to(u.arcmin**-2).value
     common_bkg_std_d = rd_result['std_lf_d'].to(u.arcmin**-2).value
     bkg_bins = BINS
     log_mass = new_efeds[efeds_index]['median_500c_lcdm'].value
     area = new_efeds[efeds_index]['area'].to(u.arcmin**2).value
+    unmasked_fraction = new_efeds[efeds_index]['unmasked_fraction'].value
     returnme = {
         'obs_alllf': obs_alllf,
+        'obs_alllf_corrected': obs_alllf_corrected,
         'every_obs_bins': every_obs_bins,
         'common_bkg_mean_d': common_bkg_mean_d,
         'common_bkg_std_d': common_bkg_std_d,
@@ -505,7 +524,8 @@ def easy_mcmc(efeds_index, efeds, hsc, rd_result):  # band = g r i z y
         'log_mass': log_mass,
         'area': area,
         'z': z,
-        'index': efeds_index
+        'index': efeds_index,
+        'unmasked_fraction': unmasked_fraction
     }
     return returnme
 
@@ -516,7 +536,7 @@ def value2bkg_d(value, is_used, bins=BINS):
     bkg_value = value_[ARG_NUM:]
     bkg_d = []
     bkg_bins = []
-    bkg_num = np.sum(is_used, axis = 1)
+    bkg_num = np.sum(is_used, axis=1)
     for i in range(band_num):
         this_bins = np.full(len(bins), False)
         for j in range(len(this_bins) - 1):
@@ -528,15 +548,16 @@ def value2bkg_d(value, is_used, bins=BINS):
         bkg_bins.append(bins[this_bins])
     return bkg_d, bkg_bins
 
+
 def value2bkg_d_funclist(value, is_used, bins=BINS):
     band_num = 5
     bkg_d, bkg_bins = value2bkg_d(value, is_used, bins)
-    bkg_mbins = [(bkg_bins[i][:-1] + bkg_bins[i][1:]) / 2 
+    bkg_mbins = [(bkg_bins[i][:-1] + bkg_bins[i][1:]) / 2
                  for i in range(band_num)]
     bkg_func = []
     for i in range(band_num):
         if len(bkg_d[i]) == 0:
-            bkg_func.append(lambda *args, **kwargs:np.nan)
+            bkg_func.append(lambda *args, **kwargs: np.nan)
             continue
         bkg_func.append(interpolate.interp1d(bkg_mbins[i], bkg_d[i]))
     return bkg_func

@@ -90,7 +90,7 @@ def plot_step(sampler,
         ax.plot(samples[:, :, show_index[i]], "k", alpha=0.3)
         ax.set_xlim(0, len(samples))
         if label is not None:
-            ax.set_ylabel(label[i])
+            ax.set_ylabel(label[i], fontsize=16)
         ax.yaxis.set_label_coords(-0.1, 0.5)
     axes[-1].set_xlabel("step number")
     if title is not None:
