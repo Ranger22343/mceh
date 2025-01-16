@@ -5,9 +5,9 @@ Change Log of Data
 
 ---
 # Introduction
-This markdown file contains the history of data change for Hung-Yu Lin's work. The python package `mceh`(created by Lin; its name is `mceh_verX` where "X" is the version) is used to generate new data. When a generating code is mentioned (named `generate_modified_xxx.ipynb` where xxx is the type of data), despite it is saved in `mceh/data_generation`, it should be ran in the same directory as `mceh` package. Therefore, the directory should looks like the following to run the generating code.
+This markdown file contains the history of data change for Hung-Yu Lin's work. The python package `mceh`(created by Lin) is used to generate new data. When a generating code is mentioned (named `generate_modified_xxx.ipynb` where xxx is the type of data), despite it is saved in `mceh/data_generation`, it should be ran in the same directory as `mceh` package. Therefore, the directory should looks like the following to run the generating code.
 ```
-/mceh_verX
+/mceh
 /data
     data_needed.fits
 generate_modified_xxx.ipynb
@@ -83,3 +83,24 @@ The modifications are:
 # eFEDSmasstable
 
 The data is called `eFEDSmasstable.fits` and it's from [I-Non's website](https://inonchiu.github.io/eFEDScosmology_chiu22/).
+
+# zmbins
+The data name is `zmbins20241108.pickle`.
+The generating code is `generate_zmbins_ver1.ipynb`.
+The mceh version is `v3.0.0-alpha.2`.
+eFEDS is needed (see the document in the mceh version).
+- Give the mass/redshift sepration values
+
+# bkglf
+The data name is `bkg_lf20241111.pickle`.
+The generating code is `generate_bkglf_ver1.ipynb`.
+The mceh version is `v3.0.0-alpha.2`.
+eFEDS and HSC are needed(see the document in the mceh version), and also `bkg20241108.pickle`.
+- Give the background LF by the random points from `bkg20241108.pickle`
+
+# bkg points
+The data name is `bkg20241108.pickle`.
+The generating code is `get_bkg20241109.py`.
+The mceh version is `v3.0.0-alpha.2`.
+eFEDS, HSC and `rd` are needed (see the mceh document).
+- Generate 3000 random apertures with median radius of the clusters

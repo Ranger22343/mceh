@@ -41,6 +41,12 @@ def init(*args):
         if arg == 'rd':
             rd = QTable.read('data/modified_random_ver1.fits')
             return_dict['rd'] = rd
+        if arg == 'bkg':
+            bkg = pickle_load('data/bkg_lf20241111.pickle')
+            return_dict['bkg'] = bkg
+        if arg == 'zmbins':
+            zmbins = pickle_load('data/zmbins20241108.pickle')
+            return_dict['zmbins'] = zmbins
     returnme = [return_dict[arg] for arg in args]
     if len(returnme) == 1:
         returnme = returnme[0]

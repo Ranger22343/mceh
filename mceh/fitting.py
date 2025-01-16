@@ -11,12 +11,15 @@ import multiprocessing
 from functools import partial
 from scipy import interpolate
 import astropy.units as u
+from scipy import special
 
 multiprocessing.set_start_method('fork', force=True)
 bins = np.linspace(14, 24, 41)  #boundaries of bins
 bins2 = np.arange(10, 30.1, 0.2)
 mbins2 = bins2[:-1] / 2 + bins2[1:] / 2
-#labels = [r"$m^*_1$", r"$\phi^*_1$", r"$\alpha_1$", r"$m^*_2$", r"$\phi^*_2$", r"$\alpha_2$"]
+LABELS = ['A', 'B', r'$\alpha$', r'$\Delta m$']
+DIFF_BINS = np.arange(-2, 2.1, 0.2)
+DIFF_MBINS = DIFF_BINS[:-1] / 2 + DIFF_BINS[1:] / 2
 
 
 def isbin_by_isbound(is_bound_bins):
@@ -115,17 +118,22 @@ def schechter(m, m_s, phi_s, alpha):
         alpha + 1) * np.exp(-10**(0.4 * (m_s - m)))
 
 
-def schechter_bins(m_s, phi_s, alpha, bins=np.linspace(
-    14, 24, 41)):  #the number in each bin estimated by Schechter function
-    result = []
-    for i in range(len(bins) - 1):
-        result.append(
-            quad(schechter, bins[i], bins[i + 1], args=(m_s, phi_s, alpha))[0])
-    result = np.array(result)
-    return result
+def schechter_bins(phi_s, alpha, m_s, bins):
+    if alpha + 1 > 0:
+        bound_values = (phi_s 
+                        * special.gammainc(alpha + 1, 10**(0.4 * (m_s - bins))) 
+                        * special.gamma(alpha + 1))
+        returnme = bound_values[:-1] - bound_values[1:]
+    else:
+        result = [quad(schechter, 
+                       bins[i], bins[i + 1], 
+                       args=(m_s, phi_s, alpha))[0] 
+                  for i in range(len(bins) - 1)]
+        returnme = np.array(result)
+    return returnme
 
 
-def log_likelihood(p0, obs, bkg, bin_pair):
+def log_likelihood(p0, obs, bkg, bin_pair, unmasked_fraction):
     m_s, phi_s, alpha = p0
     #print('m_s, phi_s, alpha =', p0)
     if (bkg < 0).any():
@@ -137,7 +145,7 @@ def log_likelihood(p0, obs, bkg, bin_pair):
                        bins=[bin_pair[i][0], bin_pair[i][1]])
         for i in range(len(bin_pair))
     ]).flatten()
-    M = S + bkg
+    M = (S + bkg) * unmasked_fraction
     D = obs
     #print('S =',S)
     #print('M =', M)
@@ -373,6 +381,7 @@ def stacked_log_prob(p,
                      common_bin_pair,
                      all_bin_pair,
                      z,
+                     unmasked_fraction,
                      mode='phi_model_schechter'):
     """The sum of the logarithmic probability of the group of clusters. 
 
@@ -415,12 +424,12 @@ def stacked_log_prob(p,
         (A, B, alpha, dm) = p[:4]
         common_bkg_d = np.array(p[4:])
         phi = phi_model(log_mass, A, B)
-        alpha = np.full(alpha, cluster_num)
+        alpha = np.full(cluster_num, alpha)
     elif mode == 'schechter':
         (phi, alpha, dm) = p[:3]
         common_bkg_d = np.array(p[3:])
         phi = np.full(phi, cluster_num)
-        alpha = np.full(alpha, cluster_num)
+        alpha = np.full(cluster_num, alpha)
     elif mode == 'zm_model_schechter':
         (A, B, alpha0, dm, C, D, E) = p[:7]
         common_bkg_d = np.array(p[7:])
@@ -452,7 +461,8 @@ def stacked_log_prob(p,
     ]  # its p = (m_s, phi_s, alpha)
     ll_list = [
         log_likelihood((ms_model[i] + dm, phi[i], alpha[i]), obs[i], all_bkg[i],
-                       all_bin_pair[i]) for i in range(cluster_num)
+                       all_bin_pair[i], unmasked_fraction[i]) 
+                       for i in range(cluster_num)
     ]
     returnme = sum(lp_list) + sum(ll_list)
     if np.isnan(returnme).any() == True:
@@ -560,13 +570,15 @@ def get_sampler(obs_alllf,
                 log_mass,
                 area,
                 z,
+                unmasked_fraction,
                 nwalkers='auto',
                 step=10000,
                 p0=None,
                 cpu_num=1,
                 mode='phi_model_schechter',
                 progress=False,
-                check=False):
+                check=False,
+                **kwargs):
 
     cluster_num = len(obs_alllf)
 
@@ -623,6 +635,7 @@ def get_sampler(obs_alllf,
                                log_mass=log_mass,
                                area=area,
                                z=z,
+                               unmasked_fraction=unmasked_fraction,
                                common_bkg_mean_d=common_bkg_mean_d,
                                common_bkg_std_d=common_bkg_std_d,
                                common_bin_pair=common_bin_pair,
@@ -743,6 +756,7 @@ def pre_mcmc_dict(efeds_index, efeds, hsc, rd_result, band): # band = g r i z y
     log_mass = new_efeds[efeds_index]['median_500c_lcdm'].value
     area = new_efeds[efeds_index]['area'].to(u.arcmin**2).value
     z = new_efeds[efeds_index]['Z_BEST_COMB'].value
+    unmasked_fraction = new_efeds[efeds_index]['unmasked_fraction'].value
     returnme = {
         'obs_alllf': obs_alllf,
         'every_obs_bins': every_obs_bins,
@@ -755,7 +769,8 @@ def pre_mcmc_dict(efeds_index, efeds, hsc, rd_result, band): # band = g r i z y
         #'zbound': z_bound,
         #'mbound': m_bound,
         'index': efeds_index,
-        'z': z
+        'z': z,
+        'unmasked_fraction': unmasked_fraction
     }
     return returnme
 
@@ -767,6 +782,7 @@ def easy_mcmc(z_index, m_index, efeds, hsc, rd_result, zmbins):
     efeds_index, z_bound, m_bound = zmbins_efeds_index(z_index, m_index, zbins,
                                                        mbins, new_efeds)
     band = fit_band(new_efeds['Z_BEST_COMB'][efeds_index])
+    print(band)
     returnme = pre_mcmc_dict(efeds_index, new_efeds, hsc, rd_result, band[0])
     returnme['zbound'] = z_bound
     returnme['mbound'] = m_bound

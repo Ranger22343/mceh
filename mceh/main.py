@@ -3,8 +3,9 @@ Last changed date: 2024 Oct 7
 
 The main code to do the MCMC.
 """
-from . import fitting
-
+from .main import*
+from .fitting import*
+from .utility import*
 import numpy as np
 
 print('Call manual() to get the manual.')
