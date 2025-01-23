@@ -1,1 +1,2 @@
-from .main import*
+from .find_luminosity import*
+from .utility import*
