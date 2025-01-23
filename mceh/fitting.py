@@ -14,9 +14,8 @@ import astropy.units as u
 from scipy import special
 
 multiprocessing.set_start_method('fork', force=True)
-bins = np.linspace(14, 24, 41)  #boundaries of bins
-bins2 = np.arange(10, 30.1, 0.2)
-mbins2 = bins2[:-1] / 2 + bins2[1:] / 2
+BINS = np.arange(10, 30.1, 0.2)
+MBINS = BINS[:-1] / 2 + BINS[1:] / 2
 LABELS = ['A', 'B', r'$\alpha$', r'$\Delta m$']
 DIFF_BINS = np.arange(-2, 2.1, 0.2)
 DIFF_MBINS = DIFF_BINS[:-1] / 2 + DIFF_BINS[1:] / 2
@@ -752,7 +751,7 @@ def pre_mcmc_dict(efeds_index, efeds, hsc, rd_result, band): # band = g r i z y
     common_bkg_mean_d = rd_result['mean_lf_d'][band_index].to(
         u.arcmin**-2).value
     common_bkg_std_d = rd_result['std_lf_d'][band_index].to(u.arcmin**-2).value
-    bkg_bins = bins2
+    bkg_bins = BINS
     log_mass = new_efeds[efeds_index]['median_500c_lcdm'].value
     area = new_efeds[efeds_index]['area'].to(u.arcmin**2).value
     z = new_efeds[efeds_index]['Z_BEST_COMB'].value
@@ -787,3 +786,10 @@ def easy_mcmc(z_index, m_index, efeds, hsc, rd_result, zmbins):
     returnme['zbound'] = z_bound
     returnme['mbound'] = m_bound
     return returnme
+
+
+def efeds2fake(efeds, fake_hsc, mode='real'):
+    if mode == 'real':
+        for i in range(efeds):
+            efeds['galaxy_index'][i] = np.where(fake_hsc['host_index'] == i)[0]
+    return efeds

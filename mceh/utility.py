@@ -35,7 +35,7 @@ def init(*args):
             return_dict['efeds'] = efeds
         if arg == 'hsc':
             hsc = QTable.read(
-                'data/modified_hsc_ver1.fits'
+                'data/modified_hsc_ver2.fits'
                 )
             return_dict['hsc'] = hsc
         if arg == 'rd':
