@@ -335,14 +335,18 @@ def nonoverlapping_random_point(number,
     return pass_ra, pass_dec, pass_coverage
 
 
-def clean_skypoint(ra, dec, r, data_ra, data_dec, return_index=False):
+def square_bound(ra, dec, r):
     ddec = r
     if np.abs(dec + r) < np.abs(dec - r):
         r = -r
-    #TODO: Make it compatiable when the boundaries meet the max/min ra/dec. 
     max_dra = (np.arccos((np.cos(r) - 1) / (np.cos(dec + r)**2) + 1))
     min_ra, max_ra = ra - max_dra, ra + max_dra
     min_dec, max_dec = dec - ddec, dec + ddec
+    return min_ra, max_ra, min_dec, max_dec
+
+
+def clean_skypoint(ra, dec, r, data_ra, data_dec, return_index=False):
+    min_ra, max_ra, min_dec, max_dec = square_bound(ra, dec, r)
     is_ra = (data_ra > min_ra) & (data_ra < max_ra)
     is_dec = (data_dec > min_dec) & (data_dec < max_dec)
     is_return = is_ra & is_dec
@@ -356,3 +360,56 @@ def cmag(z, band_name):  # characteristic magnitude by the model
     # band_name: ex. 'hsc_i'
     return outputModels.printRSmodel('data/bc03_rs_zfp3d0_tau_p0d4.fits',
                                      [band_name], z)[1][band_name][4]
+
+
+def random_point_within_radius(number,
+                               ra,
+                               dec,
+                               r,
+                               try_limit=10000):
+    """Generate a given number of random points within a given radius.
+    
+    `number` of points with radii `r` will be generated within the circle with
+    center [`ra`, `dec`] and radius `r`. The random RA are uniformly chose 
+    between [`ra_min`, `ra_max`] while the DEC are [sin(`dec_min`), 
+    sin(`dec_max`).
+
+    Args:
+        number (int): Number of random points to be generated.
+        ra (scalar Quantity): RA of the center of the circle.
+        dec (scalar Quantity): DEC of the center of the circle.
+        r (scalar Quantity): The radius of the circle.
+        try_limit (int): Maximal try of getting a qualified point.
+    
+    Returns:
+        ((`number`,) Quantity, (`number`,) Quantity)
+        The RA/DEC of the random points.
+    """
+    pass_ra = []
+    pass_dec = []
+    ra_min, ra_max, dec_min, dec_max = square_bound(ra, dec, r)
+    for i in range(number):
+        tried = 0
+        while tried < try_limit:
+            # Generate a random point.
+            rd_ra = random.uniform(
+                ra_min.to(u.deg).value,
+                ra_max.to(u.deg).value) * u.deg
+            rd_dec = np.arcsin(
+                random.uniform(np.sin(dec_min.to(u.rad).value),
+                               np.sin(dec_max.to(
+                                   u.rad).value))) / np.pi * 180 * u.deg
+            rd_coord = coord.SkyCoord(rd_ra, rd_dec)
+            sep = rd_coord.separation(coord.SkyCoord(ra, dec))
+            if sep < r:
+                pass_ra.append(rd_ra)
+                pass_dec.append(rd_dec)
+                break
+            tried += 1
+        if tried >= try_limit:
+            print(f'WARNING: Exceed the trying limit at n = {len(pass_ra)}.'
+                  ' Return the left coordinates.')
+            break
+    pass_ra = u.quantity.Quantity(pass_ra)
+    pass_dec = u.quantity.Quantity(pass_dec)
+    return pass_ra, pass_dec
