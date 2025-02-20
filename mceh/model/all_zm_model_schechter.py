@@ -6,6 +6,8 @@ import functools
 from scipy import interpolate
 import astropy.units as u
 import os
+from astropy.table import QTable
+from .. import utility as ut
 
 os.environ["OMP_NUM_THREADS"] = "1"
 multiprocessing.set_start_method('fork', force=True)
@@ -21,6 +23,49 @@ ARG_NUM = 9
 LABELS = [r'$\phi_0$', r'$\beta_\phi$', r'$\alpha_0$', 
           r'$\Delta m_0$', r'$\gamma_\phi$', r'$\beta_\alpha$', 
           r'$\gamma_\alpha$', r'$\beta_{m}$', r'$\gamma_{m}$']
+
+
+def init(*args):
+    """Load frequent-used data
+    
+    Load frequent-used data containing eFEDS('efeds'), HSC('hsc') and 
+    random('rd').
+
+    Args:
+        *args: The data you want to load. Options are 'efeds', 'hsc' and 'rd'.
+    
+    Returns:
+        The corresponding data.
+    """
+    return_dict = {}
+    for arg in args:
+        if arg == 'efeds':
+            efeds = QTable.read('data/modified_efeds_ver8.fits')
+            return_dict['efeds'] = efeds
+        if arg == 'hsc':
+            hsc = QTable.read(
+                'data/modified_hsc_ver1.fits'
+                )
+            return_dict['hsc'] = hsc
+        if arg == 'rd':
+            rd = QTable.read('data/modified_random_ver1.fits')
+            return_dict['rd'] = rd
+        if arg == 'zmbins':
+            zmbins = ut.pickle_load('data/zmbins20241108.pickle')
+            return_dict['zmbins'] = zmbins
+        if arg == 'sr_efeds':
+            efeds = QTable.read('data/modified_efeds_ver8.fits')
+            efeds = efeds[efeds['low_cont_flag'] 
+                          & (efeds['unmasked_fraction'] > 0.6)]
+            return_dict['efeds'] = efeds
+        if arg == 'rd_result':
+            rd_result = ut.pickle_load('data/bkg_lf20241111.pickle')
+            return_dict['rd_result'] = rd_result
+    returnme = [return_dict[arg] for arg in args]
+    if len(returnme) == 1:
+        returnme = returnme[0]
+    return returnme
+
 
 # lambda function cannnot go across cpu, so I created it.
 def nan_func(*args, **kwargs):

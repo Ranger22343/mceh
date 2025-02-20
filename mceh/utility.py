@@ -7,44 +7,12 @@ import pickle
 import matplotlib.pyplot as plt
 import time
 import numpy as np
-from . import fitting
 from scipy import interpolate
 import astropy.coordinates as coord
 import random
 import astropy.units as u
 from astropy.table import QTable
 import tqdm
-
-
-def init(*args):
-    """Load frequent-used data
-    
-    Load frequent-used data containing eFEDS('efeds'), HSC('hsc') and 
-    random('rd').
-
-    Args:
-        *args: The data you want to load. Options are 'efeds', 'hsc' and 'rd'.
-    
-    Returns:
-        The corresponding data.
-    """
-    return_dict = {}
-    for arg in args:
-        if arg == 'efeds':
-            efeds = QTable.read('data/modified_efeds_ver8.fits')
-            return_dict['efeds'] = efeds
-        if arg == 'hsc':
-            hsc = QTable.read(
-                'data/modified_hsc_ver1.fits'
-                )
-            return_dict['hsc'] = hsc
-        if arg == 'rd':
-            rd = QTable.read('data/modified_random_ver1.fits')
-            return_dict['rd'] = rd
-    returnme = [return_dict[arg] for arg in args]
-    if len(returnme) == 1:
-        returnme = returnme[0]
-    return returnme
 
 
 def ordinal(num):
@@ -115,117 +83,6 @@ def pickle_dump(data, file_path):
     # Save a pickle file.
     with open(file_path, 'wb') as f:
         pickle.dump(data, f)
-
-
-def mcmc_lf_all(flat_chain, log_mass, z, ms_model, area, bins, zero_index,
-                progress=True, mode='phi_model_schechter'):
-    """Obtain the luminosity functions of every steps from a flat MCMC chain
-
-    The LF will be generated corresponding to the flat chain applying on each
-    cluster. The order will be [CH0CL0, CH0CL1, CH0CL2, ..., CH1CL0, ...] where
-    CHMCLN means the LF from Mth chain applying on the Nth clusters.
-
-    Args:
-        flat_chain (array-like): The flat chain of the MCMC.
-        log_mass (array-like): The logrithmal mass of the clusters. Note that
-            the units are not contained.
-        z (array-like): The redshift of the clusters.
-        ms_model (array-like): The model of the characteristic magnitude.
-        area (array-like): The on-sky area of the cluters (assuming 0% masking
-            fraction).
-        bins (array-like): The (full) bins used to fit.
-        zero_index (array-like): The indicies deleted from the full bins. It
-            exists because some observations are always zero so it is not needed
-            to fit it.
-        progress (bool): Whether the progress bar is shown.
-    
-    Returns:
-        ndarray: An array of LF corresponding to the chain. The order is
-            [chain 0 cluster 0, chain 0 cluster 1, chain 0 cluster 2,...,
-             chain 1 cluster 0, chain 1 cluster 1, ...].
-    """
-    cnum = len(log_mass)
-    if mode == 'phi_model_schechter':
-        A_chain = flat_chain[:, 0]
-        B_chain = flat_chain[:, 1]
-        alpha_chain = flat_chain[:, 2]
-        dm_chain = flat_chain[:, 3]
-        bkg_chain = flat_chain[:, 4:]
-        phi_chain = np.array([fitting.phi_model(log_mass, A, B)
-                            for A, B in zip(A_chain, B_chain)]).flatten()
-        ms_chain = np.array([ms_model + dm for dm in dm_chain]).flatten()
-        new_alpha_chain = np.array([np.full(cnum, alpha) 
-                                    for alpha in alpha_chain]).flatten()
-    elif mode == 'zm_model_schechter':
-        A_chain = flat_chain[:, 0]
-        B_chain = flat_chain[:, 1]
-        alpha0_chain = flat_chain[:, 2]
-        dm_chain = flat_chain[:, 3]
-        C_chain = flat_chain[:, 4]
-        D_chain = flat_chain[:, 5]
-        E_chain = flat_chain[:, 6]
-        bkg_chain = flat_chain[:, 7:]
-        phi_chain = np.array([fitting.phi_model_mz(log_mass, z, A, B, C)
-                            for A, B, C in zip(A_chain, B_chain, C_chain)]
-                            ).flatten()
-        ms_chain = np.array([ms_model + dm for dm in dm_chain]).flatten()
-        new_alpha_chain = np.array([
-            fitting.alpha_model_mz(log_mass, z, alpha0, D, E) 
-            for alpha0, D, E in zip(alpha0_chain, D_chain, E_chain)
-            ]).flatten()
-    sf_value = []
-    # [c0AB0, c1AB0, c2AB0, ..., c0AB1, c1AB1, ..., ...]
-    if progress == True:
-        rg = tqdm.tqdm(range(len(new_alpha_chain)))
-    else:
-        rg = range(len(new_alpha_chain))
-    for i in rg:
-        sf_value.append(fitting.schechter_bins(ms_chain[i],
-                                               phi_chain[i],
-                                               new_alpha_chain[i],
-                                               bins=bins))
-    for i in zero_index:
-        bkg_chain = np.insert(bkg_chain, i, 0, axis=1)
-    bkg_value = np.array([bkg_chain[i] * area[j] for i in range(len(flat_chain)) 
-                          for j in range(len(area))])
-    lf_value = sf_value + bkg_value
-    return lf_value
-
-
-def mcmc_lf_percentile(flat_chain,
-                       log_mass,
-                       z,
-                       ms_model,
-                       area,
-                       percentile,
-                       bins,
-                       zero_index=[]):
-    """The percentiles of the LF corresponding to the chain.
-    
-    Args:
-        flat_chain (array-like): The flat chain of the MCMC.
-        log_mass (array-like): The logrithmal mass of the clusters. Note that
-            the units are not contained.
-        z (array-like): The redshift of the clusters.
-        ms_model (array-like): The model of the characteristic magnitude.
-        area (array-like): The on-sky area of the cluters (assuming 0% masking
-            fraction).
-        percentile (array-like): The percentiles (%) that should be returned.
-        bins (array-like): The (full) bins used to fit.
-        zero_index (array-like): The indicies deleted from the full bins. It
-            exists because some observations are always zero so it is not needed
-            to fit it.
-    
-    Returns:
-        ndarray: The LF values corresponds to the percentiles of the chain.
-            The first element corresponds to the first values in `percentile`,
-            etc.
-
-    """
-    lf_value = mcmc_lf_all(flat_chain, log_mass, z, ms_model, area, bins, 
-                           zero_index)
-    returnme = np.percentile(lf_value, percentile, axis=0)
-    return returnme
 
 
 def change_bins(y, old_bin, new_bin):

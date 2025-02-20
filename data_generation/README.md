@@ -65,6 +65,16 @@ The modifications are:
 - Only columns named `object_id`, `tract`, `ra`, `dec`, `gmag_cmodel`, `rmag_cmodel`, `imag_cmodel`, `zmag_cmodel` and `ymag_cmodel` remain.
 - The columns `ra` and `dec` have a unit degree.
 
+## HSC Ver.2
+The data name is `modified_hsc_ver2.fits`.
+The generating code is `generate_modified_hsc_ver2.ipynb`.
+`429561.fits` is needed.
+The modifications are:
+- Only rows with `science_flag == True` remain.
+- Only rows with `iclassification_extendedness > 0.9` remain.
+- Only columns named `object_id`, `tract`, `ra`, `dec`, `gmag_cmodel`, `rmag_cmodel`, `imag_cmodel`, `zmag_cmodel` and `ymag_cmodel`, `gmag_err`, `rmag_err`, `imag_err`, `zmag_err`, `ymag_err`, `photoz_mean`, `photoz_mode`, `photoz_median`, `photoz_best`, `photoz_mc`, `photoz_err68_min`, `photoz_err68_max`, `photoz_err95_min` and `photoz_err95_max` remain.
+- The columns `ra` and `dec` have a unit degree.
+
 # Random
 
 ## Original
