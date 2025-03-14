@@ -134,3 +134,8 @@ def is_used2bins(original_bins, is_used):
             is_bins[i] = True
             is_bins[i + 1] = True
     return original_bins[is_bins]
+
+
+def sem(error):
+    weights = 1 / error**2
+    return np.sqrt(1 / np.sum(weights))
