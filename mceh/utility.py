@@ -136,6 +136,22 @@ def is_used2bins(original_bins, is_used):
     return original_bins[is_bins]
 
 
-def sem(error):
+def sem(error: float) -> float:
     weights = 1 / error**2
     return np.sqrt(1 / np.sum(weights))
+
+
+def is_between(x, x_min, x_max):
+    """Check if x is between x_min and x_max.
+
+    Args:
+        x (float): The value to check.
+        x_min (float): The minimum value.
+        x_max (float): The maximum value.
+
+    Returns:
+        bool: True if x is between x_min and x_max, False otherwise.
+    """
+    return (x >= x_min) & (x <= x_max)
+
+

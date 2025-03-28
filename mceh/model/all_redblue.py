@@ -18,6 +18,13 @@ BINS = np.arange(10, 30.1, 0.2)  # Boundaries of bins
 MBINS = BINS[:-1] / 2 + BINS[1:] / 2
 DIFF_BINS = np.arange(-2, 2.1, 0.2)
 DIFF_MBINS = (DIFF_BINS[:-1] + DIFF_BINS[1:]) / 2
+ZBINS = np.hstack([np.linspace(0.10, 0.35, 7)[:-1],    # g-r v.s. r or g-i v.s. i
+                   np.linspace(0.35, 0.75, 6)[:-1],    # r-i v.s. i or r-z v.s. z
+                   np.linspace(0.75, 1.31, 4),         # i-z v.s. z
+                   #0.10, 0.225, 0.35,                 # g-r v.s. r or g-i v.s. i
+                   #0.480, 0.60, 0.75,                 # r-i v.s. i or r-z v.s. z
+                   #1.000, 1.31,                       # i-z v.s. z
+                   ])
 # args = [A, B, alpha0, dm0, C, D, E, F, G] -> 9 args
 # phi = A * fB(M) * fC(z)
 # alpha = alpha0 * fD(M) * fE(z)
@@ -26,6 +33,7 @@ ARG_NUM = 3
 LABELS = [r'$\phi_0$', r'$\beta_\phi$', r'$\alpha_0$',
           r'$\Delta m_0$', r'$\gamma_\phi$', r'$\beta_\alpha$',
           r'$\gamma_\alpha$', r'$\beta_{m}$', r'$\gamma_{m}$']
+BAND_NAME = np.array(['g', 'r', 'i', 'z', 'y'])
 
 
 def init(*args):
@@ -46,9 +54,7 @@ def init(*args):
             efeds = QTable.read('data/modified_efeds_ver8.fits')
             return_dict['efeds'] = efeds
         if arg == 'hsc':
-            hsc = QTable.read(
-                'data/modified_hsc_ver3.fits'
-                )
+            hsc = QTable.read('data/modified_hsc_ver3.fits')
             return_dict['hsc'] = hsc
         if arg == 'rd':
             rd = QTable.read('data/modified_random_ver1.fits')
@@ -64,6 +70,9 @@ def init(*args):
         if arg == 'rd_result':
             rd_result = ut.pickle_load('data/bkg_lf20241111.pickle')
             return_dict['rd_result'] = rd_result
+        if arg == 'rs_rd_result':
+            rs_rd_result = ut.pickle_load('result/20250319redblue_bkg.pickle')
+            return_dict['rs_rd_result'] = rs_rd_result
         if arg == 'rs_data':
             rs_data = fits.getdata('data/rs.fits', ext=-1)
             return_dict['rs_data'] = rs_data
@@ -82,7 +91,7 @@ def schechter(m, m_s, phi_s, alpha):
     return 0.4 * np.log(10) * phi_s * (10**(0.4 * (m_s - m)))**(
         alpha + 1) * np.exp(-10**(0.4 * (m_s - m)))
 
-
+@np.vectorize
 def gammainc(s, x, eps=1e-6):
     if abs(s) < eps:
         number = 0
@@ -117,9 +126,9 @@ def log_likelihood(p0, obs, bkg, bin_pair, unmasked_fraction):
     if (bkg < 0).any():
         return -np.inf
     S = np.array([
-        schechter_bins(m_s,
-                       phi_s,
+        schechter_bins(phi_s,
                        alpha,
+                       m_s,
                        bins=[bin_pair[i][0], bin_pair[i][1]])
         for i in range(len(bin_pair))
     ]).flatten()
@@ -132,6 +141,7 @@ def log_likelihood(p0, obs, bkg, bin_pair, unmasked_fraction):
     returnme_array[iambadvalues] = 0.0
     returnme = np.sum(returnme_array)
     if np.isnan(returnme).any() == True:
+        print('p0 =', p0)
         print('S =', S)
         print('bkg =', bkg)
         print('D =', D)
@@ -244,7 +254,6 @@ def stacked_log_prob(
         obs_bin_pair,
         common_bkg_mean_d,
         common_bkg_std_d,
-        bkg_mid_bins,
         obs_mid_bins):
     """The sum of the logarithmic probability of the group of clusters. 
 
@@ -260,8 +269,6 @@ def stacked_log_prob(
             (N/area.value).
         common_bkg_std_d (array-like): The standard deviation of background 
             density (N/area.value). 
-        bkg_mid_bins (array-like): The middle of bins of `common_bkg_mean_d` 
-            and `common_bkg_std_d`
         obs_mid_bins (array-like): (cluNum, binNum) array. The center of each 
             bin for each cluster.
     
@@ -283,16 +290,10 @@ def stacked_log_prob(
                          'common_bkg_std_d must have the same length')
 
     # Get bkg for each cluster.
-    all_bkg_d = []
-    all_bkg_mean_d = []
-    all_bkg_std_d = []
-    for i in range(cnum):
-        all_bkg_d.append(np.interp(obs_mid_bins[i], bkg_mid_bins[i],
-                                   common_bkg_d[i]))
-        all_bkg_mean_d.append(np.interp(obs_mid_bins[i], bkg_mid_bins[i],
-                                        common_bkg_mean_d[i]))
-        all_bkg_std_d.append(np.interp(obs_mid_bins[i], bkg_mid_bins[i],
-                                       common_bkg_std_d[i]))
+    bin_num = len(common_bkg_d)
+    all_bkg_d = np.full((cnum, bin_num), common_bkg_d)
+    all_bkg_mean_d = np.full((cnum, bin_num), common_bkg_mean_d)
+    all_bkg_std_d = np.full((cnum, bin_num), common_bkg_std_d)
     all_bkg_mean = np.multiply(all_bkg_mean_d, area[:, np.newaxis])
     all_bkg_std = np.multiply(all_bkg_std_d, area[:, np.newaxis])
     all_bkg = np.multiply(all_bkg_d, area[:, np.newaxis])
@@ -342,7 +343,6 @@ def get_sampler(
         all_obs_bins,
         common_bkg_mean_d,
         common_bkg_std_d,
-        bkg_bins,
         ms_model,
         area,
         unmasked_fraction,
@@ -382,9 +382,7 @@ def get_sampler(
         progress (bool): Whether the progress is shown.
 
     Returns:
-        list: [sampler, state, is_used]. The first two elements can be
-            referred from `emcee`. `is_used` is a (binNum) Boolean array 
-            which represents whether the bin is used in each band.
+        tuple: (sampler, state). They can be referred from `emcee`.
     """
     # Goal: Find parameters needed for function `stacked_log_prob`.
     # Parameters: obs, ms_model, area, unmasked_fraction, obs_bin_pair,
@@ -392,15 +390,16 @@ def get_sampler(
     #             obs_mid_bins.
     cnum = len(obs_alllf)
     # Some bins of the bkg are not used so they are removed for the fitting.
-    is_used, used_bkg_bins = get_used_bkg_bins(bkg_bins, all_obs_bins)
-    bkg_mean_d_4fit = common_bkg_mean_d[is_used]
-    bkg_std_d_4fit = common_bkg_std_d[is_used]
+    # But for now, the background is just the mean bkg of all clusters.
+    # So the remove is no longer needed.
+    # is_used, used_bkg_bins = get_used_bkg_bins(bkg_bins, all_obs_bins)
+    bkg_mean_d_4fit = common_bkg_mean_d
+    bkg_std_d_4fit = common_bkg_std_d
     obs_bin_pair = [[[all_obs_bins[i][j], all_obs_bins[i][j + 1]]
                      for j in range(len(all_obs_bins[i]) - 1)]
                     for i in range(cnum)]
-    bkg_mid_bins = (used_bkg_bins[:-1] + used_bkg_bins[1:]) / 2
     obs_mid_bins = np.mean(obs_bin_pair, axis=2)
-    ndim = sum(is_used) + ARG_NUM
+    ndim = len(bkg_mean_d_4fit) + ARG_NUM
     print('ndim =', ndim)
     if nwalkers == 'auto':
         nwalkers = int(ndim * 2.5)
@@ -415,7 +414,6 @@ def get_sampler(
         obs_bin_pair=obs_bin_pair,
         common_bkg_mean_d=bkg_mean_d_4fit,
         common_bkg_std_d=bkg_std_d_4fit,
-        bkg_mid_bins=bkg_mid_bins,
         obs_mid_bins=obs_mid_bins)
     if cpu_num != 1:
         with multiprocessing.Pool(cpu_num) as pool:
@@ -428,7 +426,7 @@ def get_sampler(
     else:
         sampler = emcee.EnsembleSampler(nwalkers, ndim, partial_log_prob)
         state = sampler.run_mcmc(p0, step, progress=progress)
-    return [sampler, state, is_used]
+    return sampler, state
 
 
 def fit_band(z_list):
@@ -542,7 +540,7 @@ def proper_mag_bins(cmag, low_diff, up_diff, bin_width):
     return new_bins
 
 
-def easy_mcmc(efeds_index, efeds, hsc, rd_result, rs_data, mode):
+def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
     """Make a dict for the MCMC fitting
     
     This function generates a dict containing the data needed for the MCMC.
@@ -551,8 +549,8 @@ def easy_mcmc(efeds_index, efeds, hsc, rd_result, rs_data, mode):
         efeds_index (ndarray): The index of the eFEDS.
         efeds (QTable): The eFEDS data.
         hsc (QTable): The HSC data.
-        rd_result (QTable): The random data. See `init()`. There are two columns
-            needed, one is 'mean_lf_d' and the other is 'std_lf_d'.
+        rs_rd_result (QTable): The random data. See `init()`. There are two 
+            columns needed, one is 'mean_lf_d' and the other is 'std_lf_d'.
         rs_data (fits): The data of red sequence.
         mode (str): If it is 'red', than the fitter will use the red galaxies,
             and if it is 'blue', it uses the blue ones.
@@ -584,39 +582,45 @@ def easy_mcmc(efeds_index, efeds, hsc, rd_result, rs_data, mode):
     ]
 
     # Make obs LF
-    isred = [is_red(hsc_index[i], hsc, z, rs_data) for i in range(cnum)]
+    isred = [is_red(hsc_index[i], hsc, z[i], rs_data) for i in range(cnum)]
     if mode == 'red':
         this_hsc_index = [hsc_index[i][isred[i]] for i in range(cnum)]
+        all_bkg_mean_d = rs_rd_result['mean_red_bkg_d'][efeds_index].to(
+            u.arcmin**-2).value
+        all_bkg_std_d = rs_rd_result['std_red_bkg_d'][efeds_index].to(
+            u.arcmin**-2).value
     elif mode == 'blue':
         this_hsc_index = [hsc_index[i][~isred[i]] for i in range(cnum)]
+        all_bkg_mean_d = rs_rd_result['mean_blue_bkg_d'][efeds_index].to(
+            u.arcmin**-2).value
+        all_bkg_std_d = rs_rd_result['std_blue_bkg_d'][efeds_index].to(
+            u.arcmin**-2).value
     obs_alllf = np.array([
-        index2fl(this_hsc_index, hsc, band[i] + 'mag_cmodel', all_obs_bins[i])
+        index2fl(this_hsc_index[i], hsc, band[i] + 'mag_cmodel', all_obs_bins[i])
         for i in range(cnum)
     ])
     obs_alllf_corrected = obs_alllf / unmasked_fraction[:, np.newaxis]
 
     # Make bkg LF
-    all_bkg_mean_d = rd_result['mean_lf_d'][efeds_index].to(u.arcmin**-2).value
-    all_bkg_std_d = rd_result['std_lf_d'][efeds_index].to(u.arcmin**-2).value
     common_bkg_mean_d = np.mean(all_bkg_mean_d, axis=0)
-    bins_num = len(common_bkg_std_d[0])
-    common_bkg_std_d = np.sum(common_bkg_std_d**2, axis=0)**0.5
-    bkg_bins = BINS
+    common_bkg_std_d = np.sum(all_bkg_std_d**2, axis=0)**0.5
 
     returnme = {
         'obs_alllf': obs_alllf,
         'obs_alllf_corrected': obs_alllf_corrected,
         'all_obs_bins': all_obs_bins,
+        'all_bkg_mean_d': all_bkg_mean_d,
+        'all_bkg_std_d': all_bkg_std_d,
         'common_bkg_mean_d': common_bkg_mean_d,
         'common_bkg_std_d': common_bkg_std_d,
-        'bkg_bins': bkg_bins,
         'band': band,
         'ms_model': ms_model,
         'log_mass': log_mass,
         'area': area,
         'z': z,
         'index': efeds_index,
-        'unmasked_fraction': unmasked_fraction
+        'unmasked_fraction': unmasked_fraction,
+        'mode': mode
     }
     return returnme
 
@@ -683,17 +687,20 @@ def value2purelf(value, log_M, z, ms, bins=BINS):
     return purelf
 
 
-def get_color(index, hsc):
+def get_color(index, hsc, z=None):
     hsc = hsc[index]
-    z = hsc['photoz_best']
+    if z is None:
+        z = hsc['photoz_best']
+    else:
+        z = np.full(len(index), z)
     band = fit_band(z)
     band_name = np.array(['g', 'r', 'i', 'z', 'y'])
-    band_num = np.array([np.where(band_name==b)[0][0] for b in band])
+    band_num = np.array([np.where(band_name == b)[0][0] for b in band])
     bluer_band = band_name[band_num - 1]
-    mag_err = np.array([np.array(hsc[band[i] + 'mag_err'][i])
-                        for i in range(len(hsc))])
-    bluer_mag_err = np.array([np.array(hsc[bluer_band[i] + 'mag_err'][i])
-                              for i in range(len(hsc))])
+    mag_err = np.array(
+        [np.array(hsc[band[i] + 'mag_err'][i]) for i in range(len(hsc))])
+    bluer_mag_err = np.array(
+        [np.array(hsc[bluer_band[i] + 'mag_err'][i]) for i in range(len(hsc))])
     band = np.array([b + 'mag_cmodel' for b in band])
     bluer_band = np.array([b + 'mag_cmodel' for b in bluer_band])
     color = []
@@ -704,12 +711,15 @@ def get_color(index, hsc):
     return color, color_err
 
 
-def get_fitmag(index, hsc):
+def get_fitmag(index, hsc, z=None):
     hsc = hsc[index]
-    z = hsc['photoz_best']
+    if z is None:
+        z = hsc['photoz_best']
+    else:
+        z = np.full(len(index), z)
     band = fit_band(z)
-    fitmag_err = np.array([np.array(hsc[band[i] + 'mag_err'][i])
-                           for i in range(len(hsc))])
+    fitmag_err = np.array(
+        [np.array(hsc[band[i] + 'mag_err'][i]) for i in range(len(hsc))])
     band = np.array([b + 'mag_cmodel' for b in band])
     fitmag = np.array([np.array(hsc[band[i]][i]) for i in range(len(hsc))])
     return fitmag, fitmag_err
@@ -719,29 +729,33 @@ def get_rsfunc(z, rs_data):
     rs_yint_fixslope = interpolate.interp1d(rs_data['mean_zcl'],
                                             rs_data['rs_yint_fixslope'],
                                             fill_value='extrapolate')
-    rs_slope_fixslope = rs_data['rs_slope_fixslope'][0] # It's fixed
+    rs_slope_fixslope = rs_data['rs_slope_fixslope'][0]  # It's fixed
     colorwidth_slope_fixslope = interpolate.interp1d(
-        rs_data['mean_zcl'], rs_data["colorwidth_slope_fixslope"],
-        fill_value='extrapolate'
-        )
+        rs_data['mean_zcl'],
+        rs_data["colorwidth_slope_fixslope"],
+        fill_value='extrapolate')
     colorwidth_yint_fixslope = interpolate.interp1d(
-        rs_data['mean_zcl'], rs_data['colorwidth_yint_fixslope'],
-        fill_value='extrapolate'
-        )
+        rs_data['mean_zcl'],
+        rs_data['colorwidth_yint_fixslope'],
+        fill_value='extrapolate')
     yint = rs_yint_fixslope(z)
     slope = rs_slope_fixslope
     cw_yint = colorwidth_yint_fixslope(z)
     cw_slope = colorwidth_slope_fixslope(z)
     cw_err_func = interpolate.interp1d(rs_data['mean_zcl'],
-                                   np.nanmin(rs_data['colorwidth_mea'], axis=1),
-                                   fill_value='extrapolate')
+                                       np.nanmin(rs_data['colorwidth_mea'],
+                                                 axis=1),
+                                       fill_value='extrapolate')
+
     def rsfunc(mag):
         return slope * (mag - 20.0) + yint
+
     def cw_rsfunc(mag):
         returnme = np.atleast_1d(cw_slope * (mag - 20.0) + cw_yint)
         cw_err = np.atleast_1d(cw_err_func(z))
         returnme[returnme < cw_err] = cw_err
         return returnme
+
     return rsfunc, cw_rsfunc
 
 # blue_mean = red_mean - red_std * 3.5, blue_std = red_std * 1.4
@@ -756,19 +770,47 @@ def get_bsfunc(z, rs_data):
     return bsfunc, cw_bsfunc
 
 
-def red_prob(index, hsc, zcl, rs_data):
-    color, color_err = get_color(index, hsc)
-    fitmag, fitmag_err = get_fitmag(index, hsc)
+def band_name2index(name):
+    """Convert the band name to a number
+
+    g/r/i/z/y corresponds to 0/1/2/3/4.
+
+    Args:
+        name (array-like): A list of band name. It should only contains 'g',
+            'r', 'i', 'z' and 'y' elements.
+    
+    Returns:
+        (ndarray or int): The corresponding numbers. If len(name) == 1, only
+            an integer is returned instead of an array.
+    """
+    name = np.atleast_1d(name)
+    returnme = np.where(BAND_NAME == name)[0]
+    if len(name) == 1:
+        returnme = returnme[0]
+    return returnme
+
+
+def red_prob(index, hsc, zcl, rs_data, mode='zcl_reference'):
+    if mode == 'zgl_reference':
+        color, color_err = get_color(index, hsc)
+        fitmag, fitmag_err = get_fitmag(index, hsc)
+    elif mode == 'zcl_reference':
+        color, color_err = get_color(index, hsc, zcl)
+        fitmag, fitmag_err = get_fitmag(index, hsc, zcl)
     rsfunc, cw_rsfunc = get_rsfunc(zcl, rs_data)
-    middle = rsfunc(fitmag) # Middle of color
+    middle = rsfunc(fitmag)  # Middle of color
     width = cw_rsfunc(fitmag)
     cdf = stats.norm.cdf(color, loc=middle, scale=width)
     return cdf
 
 
-def blue_prob(index, hsc, zcl, rs_data):
-    color, color_err = get_color(index, hsc)
-    fitmag, fitmag_err = get_fitmag(index, hsc)
+def blue_prob(index, hsc, zcl, rs_data, mode='zcl_reference'):
+    if mode == 'zgl_reference':
+        color, color_err = get_color(index, hsc)
+        fitmag, fitmag_err = get_fitmag(index, hsc)
+    elif mode == 'zcl_reference':
+        color, color_err = get_color(index, hsc, zcl)
+        fitmag, fitmag_err = get_fitmag(index, hsc, zcl)
     bsfunc, cw_bsfunc = get_bsfunc(zcl, rs_data)
     middle = bsfunc(fitmag)
     width = cw_bsfunc(fitmag)
