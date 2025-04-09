@@ -40,7 +40,7 @@ def init(*args):
     """Load frequent-used data
     
     Load frequent-used data containing eFEDS('efeds'), HSC('hsc') and 
-    random('rd').
+    random('rd') and so on.
 
     Args:
         *args: The data you want to load. Options are 'efeds', 'hsc' and 'rd'.
@@ -87,12 +87,12 @@ def nan_func(*args, **kwargs):
     return np.nan
 
 
-def schechter(m, m_s, phi_s, alpha):
+def schechter(m: float, m_s: float, phi_s: float, alpha: float):
     return 0.4 * np.log(10) * phi_s * (10**(0.4 * (m_s - m)))**(
         alpha + 1) * np.exp(-10**(0.4 * (m_s - m)))
 
-@np.vectorize
-def gammainc(s, x, eps=1e-6):
+
+def gammainc(s: float, x: float, eps=1e-6) -> float:
     if abs(s) < eps:
         number = 0
         s = eps
