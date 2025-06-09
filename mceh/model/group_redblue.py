@@ -855,3 +855,36 @@ def get_redblue_lf(hsc_index, hsc, zcl, rs_data, bins):
     red_lf = np.histogram(red_mag, bins)[0]
     blue_lf = np.histogram(blue_mag, bins)[0]
     return red_lf, blue_lf
+
+
+def efeds_index_group(efeds):
+    """The index group of eFEDS of this model
+
+    This function groups the eFEDS index by redshift bins and return the index
+    list. Since the last bin has only 1 cluster, it is merged with the second 
+    last bin.
+    
+    Args:
+        efeds (QTable): The eFEDS data.
+        
+    Returns:
+        list: A list of index groups. Each group is a list of eFEDS index.
+    """
+    index_group = ut.group_indicies_by_bins(efeds['Z_BEST_COMB'].value, ZBINS)
+    last_index = index_group[-1][-1]
+    index_group.pop(-1)
+    index_group[-1].append(last_index)
+    return index_group
+'''
+class ClusterGroup:
+    """A class for the cluster group.
+    
+    This class contains the data of the cluster group, such as the eFEDS index,
+    HSC index, redshift, characteristic magnitude, etc. It also contains the
+    observational LF and the fitting band.
+
+    This class is used simply because I am tired of writing new dict every time 
+    a new model is created.
+    """
+    def __init__(self, efeds_index, efeds, hsc):
+'''

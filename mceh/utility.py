@@ -13,6 +13,7 @@ import random
 import astropy.units as u
 from astropy.table import QTable
 import tqdm
+from scipy import special
 
 
 def ordinal(num):
@@ -155,3 +156,119 @@ def is_between(x, x_min, x_max):
     return (x >= x_min) & (x <= x_max)
 
 
+def rejection_sampling(n, x_min, x_max, pdf, n_samples=None):
+    """Rejection sampling from a given PDF.
+
+    Args:
+        n (int): The number of samples to generate.
+        x_min (float): The minimum value of the range.
+        x_max (float): The maximum value of the range.
+        pdf (function): The probability density function to sample from.
+                        It must be normalized.
+        n_samples (int): The number of samples to draw.
+
+    Returns:
+        np.ndarray: The generated samples.
+    """
+    samples = []
+    if n_samples is None:
+        n_samples = n // 10
+    while len(samples) < n:
+        x = np.random.uniform(x_min, x_max, n_samples)
+        y = np.random.uniform(0, 1, n_samples)
+        mask = y < pdf(x)
+        samples.extend(x[mask])
+    return np.array(samples[:n])
+
+
+def inverse_transform_sampling(n, x_min, x_max, cdf,
+                               y_min=None,
+                               y_max=None,
+                               inv_cdf=None,
+                               bin_num=10000):
+    """Inverse transform sampling from a given CDF.
+
+    Args:
+        n (int): The number of samples to generate.
+        x_min (float): The minimum value of the range.
+        x_max (float): The maximum value of the range.
+        cdf (function): The cumulative distribution function to sample from.
+                        It can be normalized or not.
+        y_min (float, optional): The minimum value of the CDF. Defaults to None.
+        y_max (float, optional): The maximum value of the CDF. Defaults to None.
+        inv_cdf (function, optional): The inverse CDF. Defaults to None.
+        bin_num (int, optional): Number of bins for interpolation. 
+                                 Defaults to 10000.
+    Returns:
+        np.ndarray: The generated samples.
+    """
+    if inv_cdf is None:
+        bins = np.linspace(x_min, x_max, bin_num)
+        inv_cdf = interpolate.interp1d(cdf(bins), bins,
+                                       bounds_error=False,
+                                       fill_value=(x_min, x_max))
+    if y_min is None:
+        y_min = cdf(x_min)
+    if y_max is None:
+        y_max = cdf(x_max)
+    y = np.random.uniform(y_min, y_max, n)
+    x = inv_cdf(y)
+    return x
+
+
+def schechter(m: float, m_s: float, phi_s: float, alpha: float):
+    return 0.4 * np.log(10) * phi_s * (10**(0.4 * (m_s - m)))**(
+        alpha + 1) * np.exp(-10**(0.4 * (m_s - m)))
+
+
+def gammainc(s: float, x: float, eps=1e-6) -> float:
+    if abs(s) < eps:
+        number = 0
+        s = eps
+    elif s > 0:
+        number = 0
+    else:
+        if abs(s - round(s)) < eps:
+            s = round(s) + eps
+        number = int(-s) + 1
+        s = s + number
+    # ex -1 - 1e-8 -> - 1e-6 int=-1
+    # ez -1 + 1e-8 -> 1e-6 int=0
+    returnme = special.gammainc(s, x) * special.gamma(s)
+    for i in range(number):
+        returnme = (returnme + x**(s - 1) * np.exp(-x)) / (s - 1)
+        s -= 1
+    return returnme
+
+
+def schechter_bins(phi_s, alpha, m_s, bins):
+    s = alpha + 1
+    x = 10**(0.4 * (m_s - bins))
+    bound_values = phi_s * gammainc(s, x)
+    returnme = bound_values[:-1] - bound_values[1:]
+    return returnme
+
+
+def group_indicies_by_bins(arr, bins, no_empty=True):
+    """Group indices of `arr` by the bins.
+
+    Args:
+        arr (list or np.ndarray): The array to group.
+        bins (np.ndarray): The bins to group by.
+        no_empty (bool, optional): If True, empty groups will be removed. 
+                                   Defaults to True.
+
+    Returns:
+        list: A list of lists, where each inner list contains the indices 
+              of `arr` that fall within the corresponding bin.
+    """
+    returnme = []
+    for i in range(len(bins) - 1):
+        mask = (arr >= bins[i]) & (arr < bins[i + 1])
+        if i == len(bins) - 2:
+            mask = (arr > bins[i]) & (arr <= bins[i + 1])
+        if no_empty and not np.any(mask):
+            continue
+        returnme.append(np.where(mask)[0].tolist())
+    return returnme
+    
