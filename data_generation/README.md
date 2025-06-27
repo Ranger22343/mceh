@@ -75,11 +75,22 @@ The modifications are:
 - Only columns named `object_id`, `tract`, `ra`, `dec`, `gmag_cmodel`, `rmag_cmodel`, `imag_cmodel`, `zmag_cmodel` and `ymag_cmodel`, `gmag_err`, `rmag_err`, `imag_err`, `zmag_err`, `ymag_err`, `photoz_mean`, `photoz_mode`, `photoz_median`, `photoz_best`, `photoz_mc`, `photoz_err68_min`, `photoz_err68_max`, `photoz_err95_min` and `photoz_err95_max` remain.
 - The columns `ra` and `dec` have a unit degree.
 
-## HSC Ver.2
+## HSC Ver.3
 The data name is `modified_hsc_ver3.fits`.
 The generating code is `generate_modified_hsc_ver3.ipynb`.
 `modified_hsc_ver2.fits` is needed.
 - Add a uniformly random number [0, 1) for each index. The column name is `random`.
+
+## HSC Ver.4
+The data name is `modified_hsc_ver4.fits`.
+The generating code is in `hsc_ver4` folder.
+This version comes up because HSC has updated their data (s23b).
+From the original s23b data whose directory is `/array/users/profoak/dataDir/hsc/s23b/spring/spring_obj.fits`, it has the following changes:
+- Only `science_flag == True` rows remain
+- Only `iclassification_extendedness > 0.9` rows remain
+- `science_flag` and `iclassification_extendedness` columns are removed
+- A uniform random number in [0, 1) is added for every galaxy
+- `ra` and `dec` columns now have a unit `degree` from `astropy.units`
 
 # Random
 
@@ -95,6 +106,16 @@ The modifications are:
 - Only save the `RA` and `DEC` columns.
 - Add the unit `degree` to these two columns.
 - Only rows with `science_flag == True` are saved.
+
+
+## Random Ver.2
+The data name is `modified_random_ver2.fits`.
+The generating code is in `random_ver2` folder.
+This version comes up because HSC has updated their data (s23b).
+From the original s23b data whose directory is `/array/users/profoak/dataDir/hsc/s23b/spring/spring_random.fits`, it has the following changes:
+- Only `science_flag == True` rows remain
+- `science_flag` column is removed
+- `ra` and `dec` columns now have a unit `degree` from `astropy.units`
 
 # eFEDSmasstable
 

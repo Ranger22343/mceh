@@ -858,7 +858,7 @@ def get_redblue_lf(hsc_index, hsc, zcl, rs_data, bins):
 
 
 def efeds_index_group(efeds):
-    """The index group of eFEDS of this model
+    """The groups of the indicies of eFEDS clusters of this model
 
     This function groups the eFEDS index by redshift bins and return the index
     list. Since the last bin has only 1 cluster, it is merged with the second 
