@@ -150,8 +150,8 @@ def count_number(position, radius, sat_data):
 
     '''
     cen_ra, cen_dec = position
-    sat_ra, sat_dec = clean_skypoint(cen_ra, cen_dec, radius, sat_data['RA'], 
-                                     sat_data['DEC'])
+    sat_ra, sat_dec = clean_skypoint(cen_ra, cen_dec, radius, sat_data['ra'], 
+                                     sat_data['dec'])
     number = len(
         index_within_angular_radius(sat_ra, sat_dec, cen_ra, cen_dec, radius))
     return number
@@ -310,7 +310,8 @@ def nonoverlapping_random_point(number,
                 if coverage_returned_none == False:
                     area = 2 * np.pi * (1 - np.cos(r)) * u.rad**2
                     unm_area = unmasked_area(rd_ra, rd_dec, r, rd_data)
-                    cov = unm_area / area
+                    cov = (unm_area / area).to(
+                        u.dimensionless_unscaled).value
                     if cov < coverage / 100:
                         tried += 1
                         continue

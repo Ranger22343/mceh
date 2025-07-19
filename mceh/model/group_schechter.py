@@ -69,7 +69,7 @@ def init(*args):
                           & (efeds['unmasked_fraction'] > 0.6)]
             return_dict['sr_efeds'] = efeds
         if arg == 'rd_result':
-            rd_result = ut.pickle_load('result/20250716redblue_fit.pickle')
+            rd_result = ut.pickle_load('data/bkg_lf20241111.pickle')
             return_dict['rd_result'] = rd_result
         if arg == 'rs_rd_result':
             rs_rd_result = ut.pickle_load('result/20250319redblue_bkg.pickle')
@@ -541,7 +541,7 @@ def proper_mag_bins(cmag, low_diff, up_diff, bin_width):
     return new_bins
 
 
-def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
+def easy_mcmc(efeds_index, efeds, hsc, rd_result):
     """Make a dict for the MCMC fitting
     
     This function generates a dict containing the data needed for the MCMC.
@@ -550,11 +550,8 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
         efeds_index (ndarray): The index of the eFEDS.
         efeds (QTable): The eFEDS data.
         hsc (QTable): The HSC data.
-        rs_rd_result (QTable): The random data. See `init()`. There are two 
+        rd_result (QTable): The random data. See `init()`. There are two 
             columns needed, one is 'mean_lf_d' and the other is 'std_lf_d'.
-        rs_data (fits): The data of red sequence.
-        mode (str): If it is 'red', than the fitter will use the red galaxies,
-            and if it is 'blue', it uses the blue ones.
     Returns:
         dict: The dict containing the data needed for the MCMC.
     """
@@ -582,25 +579,24 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
     ]
 
     # Make obs LF
-    isred = [is_red(hsc_index[i], hsc, z[i], rs_data) for i in range(cnum)]
-    if mode == 'red':
-        this_hsc_index = [hsc_index[i][isred[i]] for i in range(cnum)]
-        all_bkg_mean_d = rs_rd_result['mean_red_bkg_d'][efeds_index].to(
-            u.arcmin**-2).value
-        all_bkg_std_d = rs_rd_result['std_red_bkg_d'][efeds_index].to(
-            u.arcmin**-2).value
-    elif mode == 'blue':
-        this_hsc_index = [hsc_index[i][~isred[i]] for i in range(cnum)]
-        all_bkg_mean_d = rs_rd_result['mean_blue_bkg_d'][efeds_index].to(
-            u.arcmin**-2).value
-        all_bkg_std_d = rs_rd_result['std_blue_bkg_d'][efeds_index].to(
-            u.arcmin**-2).value
-    else:
-        raise ValueError('mode must be "red" or "blue", but got ' + mode)
+    this_hsc_index = hsc_index
+
+    # Assume the clusters share the same band
+    band_index = band_name2index(band[0])
+    bkg_mean_d_func = interpolate.interp1d(MBINS, rd_result['mean_lf_d'][band_index].to(u.arcmin**-2).value)
+    bkg_std_d_func = interpolate.interp1d(MBINS, rd_result['std_lf_d'][band_index].to(u.arcmin**-2).value)
+    all_bkg_mean_d = []
+    all_bkg_std_d = []
+    for i in range(cnum):
+        this_bins = ms_model[i] + DIFF_MBINS
+        all_bkg_mean_d.append(bkg_mean_d_func(this_bins))
+        all_bkg_std_d.append(bkg_std_d_func(this_bins))
     obs_alllf = np.array([
-        index2fl(this_hsc_index[i], hsc, band[i] + 'mag_cmodel', all_obs_bins[i])
-        for i in range(cnum)
+        index2fl(this_hsc_index[i], hsc, band[i] + 'mag_cmodel',
+                 all_obs_bins[i]) for i in range(cnum)
     ])
+    all_bkg_mean_d = np.array(all_bkg_mean_d)
+    all_bkg_std_d = np.array(all_bkg_std_d)
     obs_alllf_corrected = obs_alllf / unmasked_fraction[:, np.newaxis]
 
     # Make bkg LF
@@ -622,7 +618,6 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
         'z': z,
         'index': efeds_index,
         'unmasked_fraction': unmasked_fraction,
-        'mode': mode
     }
     return returnme
 

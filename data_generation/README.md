@@ -51,6 +51,13 @@ The generating code is `generate_modified_efeds_ver8.ipynb`.
 `mceh` version is `3.0.0`.
 - Add a column `SIGMA_Z_BEST_COMB`
 
+## eFEDS Ver.9
+The data name is `modified_efeds_ver9.fits`.
+The generating code is `generate_modified_efeds_ver9.ipynb`.
+`modified_efeds_ver8.fits` is needed.
+`mceh` version is `6.1.0`.
+This version is basically the same as version 8 but with updated HSC and random catalog.
+
 # HSC
 ## Original
 The original data is called `429561.fits`, which is from [the HSP-SSP data release website](https://hsc-release.mtk.nao.ac.jp/doc/index.php/data-access__pdr3/). Use the `CAS Search` entry and the SQL (`hsc.sql`) is saved in the same directory as this markdown file.

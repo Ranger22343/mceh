@@ -29,12 +29,12 @@ ZBINS = np.hstack([np.linspace(0.10, 0.35, 7)[:-1],    # g-r v.s. r or g-i v.s. 
 # phi = A * fB(M) * fC(z)
 # alpha = alpha0 * fD(M) * fE(z)
 # dm = dm0 * fF(M) * fG(z)
-# efeds[efeds['low_cont_flag'] & (efeds['unmasked_fraction'] > 0.6)]
 ARG_NUM = 3
 LABELS = [r'$\phi_0$', r'$\beta_\phi$', r'$\alpha_0$',
           r'$\Delta m_0$', r'$\gamma_\phi$', r'$\beta_\alpha$',
           r'$\gamma_\alpha$', r'$\beta_{m}$', r'$\gamma_{m}$']
 BAND_NAME = np.array(['g', 'r', 'i', 'z', 'y'])
+LOG_PIV_MASS = 14  # log10(M_piv) in M_sun/h
 
 
 def init(*args):
@@ -69,7 +69,7 @@ def init(*args):
                           & (efeds['unmasked_fraction'] > 0.6)]
             return_dict['sr_efeds'] = efeds
         if arg == 'rd_result':
-            rd_result = ut.pickle_load('result/20250716redblue_fit.pickle')
+            rd_result = ut.pickle_load('data/bkg_lf20241111.pickle')
             return_dict['rd_result'] = rd_result
         if arg == 'rs_rd_result':
             rs_rd_result = ut.pickle_load('result/20250319redblue_bkg.pickle')
@@ -251,6 +251,7 @@ def stacked_log_prob(
         obs,
         ms_model,
         area,
+        log_mass,
         unmasked_fraction,
         obs_bin_pair,
         common_bkg_mean_d,
@@ -280,9 +281,9 @@ def stacked_log_prob(
     # p0(i.e. parameters except bkg), obs, bkg, bin_pair, unmasked_fraction,
     # rd_bkg_mean and rd_bkg_std are needed.
     cnum = len(ms_model)
-    (phi, alpha, dm) = p[:ARG_NUM]
+    (phi_per_solmass, alpha, dm) = p[:ARG_NUM]
     # In case phi, alpha, dm can be modeled based on the clusters.
-    phi = np.full(cnum, phi)
+    phi = np.full(cnum, phi_per_solmass * 10**(log_mass - LOG_PIV_MASS))
     alpha = np.full(cnum, alpha)
     dm = np.full(cnum, dm)
     common_bkg_d = np.array(p[ARG_NUM:])
@@ -563,14 +564,15 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
     #       ms_model, area and unmasked_fraction.
 
     # Initial setup
-    z = efeds[efeds_index]['Z_BEST_COMB'].value
+    new_efeds = efeds[efeds['low_cont_flag']
+                      & (efeds['unmasked_fraction'] > 0.6)]
+    z = new_efeds[efeds_index]['Z_BEST_COMB'].value
     band = np.array(fit_band(z))
-    band[band == 'y'] = 'z'  # y band is not used in the fitting
     cnum = len(efeds_index)
-    unmasked_fraction = efeds[efeds_index]['unmasked_fraction'].value
+    unmasked_fraction = new_efeds[efeds_index]['unmasked_fraction'].value
     hsc_index = efeds['galaxy_index'][efeds_index]
-    log_mass = efeds[efeds_index]['median_500c_lcdm'].value
-    area = efeds[efeds_index]['area'].to(u.arcmin**2).value
+    log_mass = new_efeds[efeds_index]['median_500c_lcdm'].value
+    area = new_efeds[efeds_index]['area'].to(u.arcmin**2).value
     if len(np.atleast_1d(band)) == 1:
         band = np.full(len(efeds_index), band)
     ms_model = np.array(
@@ -763,8 +765,8 @@ def get_rsfunc(z, rs_data):
 # blue_mean = red_mean - red_std * 3.5, blue_std = red_std * 1.4
 def get_bsfunc(z, rs_data):
     rs_func, cw_rsfunc = get_rsfunc(z, rs_data)
-    mean_diff = -2.7 # loc_blue - loc_red, must be negative
-    std_fraction = 1. # scale_blue / scale_red, must be positive
+    mean_diff = -3.5 # loc_blue - loc_red, must be negative
+    std_fraction = 1.50 # scale_blue / scale_red, must be positive
     def bsfunc(mag):
         return rs_func(mag) + mean_diff * cw_rsfunc(mag)
     def cw_bsfunc(mag):
@@ -857,8 +859,34 @@ def get_redblue_lf(hsc_index, hsc, zcl, rs_data, bins):
     return red_lf, blue_lf
 
 
-def sr_efeds_index(efeds):
-    return np.where(efeds['low_cont_flag'] & (efeds['unmasked_fraction'] > 0.6))[0]
+def efeds_index_group(efeds):
+    """The groups of the indicies of eFEDS clusters of this model
 
-def is_sr_efeds(efeds):
-    return efeds['low_cont_flag'] & (efeds['unmasked_fraction'] > 0.6)
+    This function groups the eFEDS index by redshift bins and return the index
+    list. Since the last bin has only 1 cluster, it is merged with the second 
+    last bin.
+    
+    Args:
+        efeds (QTable): The eFEDS data.
+        
+    Returns:
+        list: A list of index groups. Each group is a list of eFEDS index.
+    """
+    index_group = ut.group_indicies_by_bins(efeds['Z_BEST_COMB'].value, ZBINS)
+    last_index = index_group[-1][-1]
+    index_group.pop(-1)
+    index_group[-1].append(last_index)
+    return index_group
+'''
+class ClusterGroup:
+    """A class for the cluster group.
+    
+    This class contains the data of the cluster group, such as the eFEDS index,
+    HSC index, redshift, characteristic magnitude, etc. It also contains the
+    observational LF and the fitting band.
+
+    This class is used simply because I am tired of writing new dict every time 
+    a new model is created.
+    """
+    def __init__(self, efeds_index, efeds, hsc):
+'''
