@@ -256,7 +256,6 @@ def stacked_log_prob(
         obs,
         ms_model,
         area,
-        log_mass,
         unmasked_fraction,
         obs_bin_pair,
         common_bkg_mean_d,
@@ -269,8 +268,7 @@ def stacked_log_prob(
         obs (array-like): The observation LF of the clusters.
         ms_model (array-like): The characeristic magnitude of the clusters.
         area (ndarray): Area (dimensionless) of the clusters.
-        log_mass (array-like): The logarithm of the mass of the clusters.
-        unmaksed_fraction (array-like): The unmasked fraction of the clusters.
+        unmasked_fraction (array-like): The unmasked fraction of the clusters.
         obs_bin_pair (ndarray): (cluNum, 2) array. The lower/upper bounds of
             the cluster bins.
         common_bkg_mean_d (array-like): The mean background density 
@@ -287,9 +285,9 @@ def stacked_log_prob(
     # p0(i.e. parameters except bkg), obs, bkg, bin_pair, unmasked_fraction,
     # rd_bkg_mean and rd_bkg_std are needed.
     cnum = len(ms_model)
-    (phi_per_mass, alpha, dm) = p[:ARG_NUM]
+    (phi, alpha, dm) = p[:ARG_NUM]
     # In case phi, alpha, dm can be modeled based on the clusters.
-    phi = np.full(cnum, phi_per_mass * 10**(log_mass - PIV_LOG_MASS))
+    phi = np.full(cnum, phi)
     alpha = np.full(cnum, alpha)
     dm = np.full(cnum, dm)
     common_bkg_d = np.array(p[ARG_NUM:])
@@ -353,7 +351,6 @@ def get_sampler(
         common_bkg_std_d,
         ms_model,
         area,
-        log_mass,
         unmasked_fraction,
         nwalkers='auto',
         step=10000,
@@ -420,7 +417,6 @@ def get_sampler(
         obs=obs_alllf,
         ms_model=ms_model,
         area=area,
-        log_mass=log_mass,
         unmasked_fraction=unmasked_fraction,
         obs_bin_pair=obs_bin_pair,
         common_bkg_mean_d=bkg_mean_d_4fit,

@@ -346,21 +346,20 @@ def get_used_bkg_bins(bkg_bins, all_obs_bins):
 
 
 
-def get_sampler(
-        obs_alllf,
-        all_obs_bins,
-        common_bkg_mean_d,
-        common_bkg_std_d,
-        ms_model,
-        area,
-        log_mass,
-        unmasked_fraction,
-        nwalkers='auto',
-        step=10000,
-        p0=None,
-        cpu_num=1,
-        progress=False,
-        **kwargs):
+def get_sampler(obs_alllf,
+                all_obs_bins,
+                common_bkg_mean_d,
+                common_bkg_std_d,
+                ms_model,
+                area,
+                log_mass,
+                unmasked_fraction,
+                nwalkers='auto',
+                step=10000,
+                p0=None,
+                cpu_num=1,
+                progress=False,
+                **kwargs):
     """The resulting [sampler, state, is_used] of the MCMC.
     
     This function runs the MCMC and gives the result.`sampler` and `state` can 
@@ -415,17 +414,18 @@ def get_sampler(
         nwalkers = int(ndim * 2.5)
     if p0 is None:
         p0 = find_ini_args(np.hstack(bkg_mean_d_4fit), nwalkers, ndim)
-    partial_log_prob = functools.partial(
-        stacked_log_prob,
-        obs=obs_alllf,
-        ms_model=ms_model,
-        area=area,
-        log_mass=log_mass,
-        unmasked_fraction=unmasked_fraction,
-        obs_bin_pair=obs_bin_pair,
-        common_bkg_mean_d=bkg_mean_d_4fit,
-        common_bkg_std_d=bkg_std_d_4fit,
-        obs_mid_bins=obs_mid_bins)
+    partial_log_prob = functools.partial(stacked_log_prob,
+                                         obs=obs_alllf,
+                                         ms_model=ms_model,
+                                         area=area,
+                                         log_mass=log_mass,
+                                         unmasked_fraction=unmasked_fraction,
+                                         obs_bin_pair=obs_bin_pair,
+                                         common_bkg_mean_d=bkg_mean_d_4fit,
+                                         common_bkg_std_d=bkg_std_d_4fit,
+                                         obs_mid_bins=obs_mid_bins)
+    print('np.shape(p0) =', np.shape(p0))
+    print('ndim=', ndim)
     if cpu_num != 1:
         with multiprocessing.Pool(cpu_num) as pool:
             sampler = emcee.EnsembleSampler(nwalkers,
@@ -551,7 +551,7 @@ def proper_mag_bins(cmag, low_diff, up_diff, bin_width):
     return new_bins
 
 
-def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
+def easy_mcmc(efeds_index, efeds, hsc, rd_result):
     """Make a dict for the MCMC fitting
     
     This function generates a dict containing the data needed for the MCMC.
@@ -560,11 +560,8 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
         efeds_index (ndarray): The index of the eFEDS.
         efeds (QTable): The eFEDS data.
         hsc (QTable): The HSC data.
-        rs_rd_result (QTable): The random data. See `init()`. There are two 
+        rd_result (dict): The random data. See `init()`. There are two 
             columns needed, one is 'mean_lf_d' and the other is 'std_lf_d'.
-        rs_data (fits): The data of red sequence.
-        mode (str): If it is 'red', than the fitter will use the red galaxies,
-            and if it is 'blue', it uses the blue ones.
     Returns:
         dict: The dict containing the data needed for the MCMC.
     """
@@ -576,6 +573,9 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
     z = efeds[efeds_index]['Z_BEST_COMB'].value
     band = np.array(fit_band(z))
     band[band == 'y'] = 'z'  # y band is not used in the fitting
+    if np.unique(band).size != 1:
+        raise ValueError('Cannot fit multiple bands at once.')
+    band_index = band_name2index(band[0])
     cnum = len(efeds_index)
     unmasked_fraction = efeds[efeds_index]['unmasked_fraction'].value
     hsc_index = efeds['galaxy_index'][efeds_index]
@@ -592,30 +592,17 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
     ]
 
     # Make obs LF
-    isred = [is_red(hsc_index[i], hsc, z[i], rs_data) for i in range(cnum)]
-    if mode == 'red':
-        this_hsc_index = [hsc_index[i][isred[i]] for i in range(cnum)]
-        all_bkg_mean_d = rs_rd_result['mean_red_bkg_d'][efeds_index].to(
-            u.arcmin**-2).value
-        all_bkg_std_d = rs_rd_result['std_red_bkg_d'][efeds_index].to(
-            u.arcmin**-2).value
-    elif mode == 'blue':
-        this_hsc_index = [hsc_index[i][~isred[i]] for i in range(cnum)]
-        all_bkg_mean_d = rs_rd_result['mean_blue_bkg_d'][efeds_index].to(
-            u.arcmin**-2).value
-        all_bkg_std_d = rs_rd_result['std_blue_bkg_d'][efeds_index].to(
-            u.arcmin**-2).value
-    else:
-        raise ValueError('mode must be "red" or "blue", but got ' + mode)
     obs_alllf = np.array([
-        index2fl(this_hsc_index[i], hsc, band[i] + 'mag_cmodel', all_obs_bins[i])
+        index2fl(hsc_index[i], hsc, band[i] + 'mag_cmodel', all_obs_bins[i])
         for i in range(cnum)
     ])
     obs_alllf_corrected = obs_alllf / unmasked_fraction[:, np.newaxis]
 
     # Make bkg LF
-    common_bkg_mean_d = np.mean(all_bkg_mean_d, axis=0)
-    common_bkg_std_d = np.sum(all_bkg_std_d**2, axis=0)**0.5
+    all_bkg_mean_d = rd_result['mean_bkg_d'][efeds_index]
+    all_bkg_std_d = rd_result['std_bkg_d'][efeds_index]
+    common_bkg_mean_d = np.mean(all_bkg_mean_d.to(u.arcmin**-2).value, axis=0)
+    common_bkg_std_d = np.sum((all_bkg_std_d.to(u.arcmin**-2).value)**2, axis=0)**0.5
 
     returnme = {
         'obs_alllf': obs_alllf,
@@ -632,7 +619,6 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
         'z': z,
         'index': efeds_index,
         'unmasked_fraction': unmasked_fraction,
-        'mode': mode
     }
     return returnme
 
@@ -796,7 +782,9 @@ def band_name2index(name):
             an integer is returned instead of an array.
     """
     name = np.atleast_1d(name)
-    returnme = np.where(BAND_NAME == name)[0]
+    returnme = []
+    for i in range(len(name)):
+        returnme.append(np.where(BAND_NAME == name[i])[0][0])
     if len(name) == 1:
         returnme = returnme[0]
     return returnme

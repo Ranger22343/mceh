@@ -10,7 +10,7 @@ from astropy.table import QTable
 from astropy.io import fits
 from scipy import stats
 from scipy import special
-from .. import utility as ut
+from .... import utility as ut
 
 os.environ["OMP_NUM_THREADS"] = "1"
 multiprocessing.set_start_method('fork', force=True)
