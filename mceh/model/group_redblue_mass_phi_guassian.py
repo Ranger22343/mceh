@@ -29,11 +29,6 @@ ZBINS = np.hstack([np.linspace(0.10, 0.35, 7)[:-1],    # g-r v.s. r or g-i v.s. 
                    #0.480, 0.60, 0.75,                 # r-i v.s. i or r-z v.s. z
                    #1.000, 1.31,                       # i-z v.s. z
                    ])
-# args = [A, B, alpha0, dm0, C, D, E, F, G] -> 9 args
-# phi = A * fB(M) * fC(z)
-# alpha = alpha0 * fD(M) * fE(z)
-# dm = dm0 * fF(M) * fG(z)
-# efeds[efeds['low_cont_flag'] & (efeds['unmasked_fraction'] > 0.6)]
 ARG_NUM = 3
 LABELS = [r'$\phi_0$', r'$\beta_\phi$', r'$\alpha_0$',
           r'$\Delta m_0$', r'$\gamma_\phi$', r'$\beta_\alpha$',
@@ -57,24 +52,24 @@ def init(*args):
     return_dict = {}
     for arg in args:
         if arg == 'efeds':
-            efeds = QTable.read('data/modified_efeds_ver8.fits')
+            efeds = QTable.read('data/modified_efeds_ver10.fits')
             return_dict['efeds'] = efeds
         if arg == 'hsc':
-            hsc = QTable.read('data/modified_hsc_ver3.fits')
+            hsc = QTable.read('data/modified_hsc_ver5.fits')
             return_dict['hsc'] = hsc
         if arg == 'rd':
-            rd = QTable.read('data/modified_random_ver1.fits')
+            rd = QTable.read('data/modified_random_ver3.fits')
             return_dict['rd'] = rd
         if arg == 'zmbins':
             zmbins = ut.pickle_load('data/zmbins20241108.pickle')
             return_dict['zmbins'] = zmbins
         if arg == 'sr_efeds':
-            efeds = QTable.read('data/modified_efeds_ver8.fits')
+            efeds = QTable.read('data/modified_efeds_ver10.fits')
             efeds = efeds[efeds['low_cont_flag']
                           & (efeds['unmasked_fraction'] > 0.6)]
             return_dict['sr_efeds'] = efeds
         if arg == 'rd_result':
-            rd_result = ut.pickle_load('result/20250716redblue_fit.pickle')
+            rd_result = ut.pickle_load('data/20250813bkg_result.pickle')
             return_dict['rd_result'] = rd_result
         if arg == 'rs_rd_result':
             rs_rd_result = ut.pickle_load('result/20250319redblue_bkg.pickle')
@@ -125,55 +120,62 @@ def schechter_bins(phi_s, alpha, m_s, bins):
     returnme = bound_values[:-1] - bound_values[1:]
     return returnme
 
-#TODO: The Schechter part can only calculated once, by modifying stacked_log_prob
-def log_likelihood(p0, obs, bkg, bin_pair, unmasked_fraction):
-    m_s, phi_s, alpha = p0
-    #print('m_s, phi_s, alpha =', p0)
-    if (bkg < 0).any():
-        return -np.inf
-    S = np.array([
-        schechter_bins(phi_s,
-                       alpha,
-                       m_s,
-                       bins=[bin_pair[i][0], bin_pair[i][1]])
-        for i in range(len(bin_pair))
-    ]).flatten()
-    M = (S + bkg) * unmasked_fraction
-    D = obs
-    if (M < 0).any():
-        return -np.inf
-    iambadvalues = (M <= 0.0) & (np.isclose(D, 0.0))
-    returnme_array = -M + D * np.log(M)  # will have warnings.
-    returnme_array[iambadvalues] = 0.0
-    returnme = np.sum(returnme_array)
+
+def param_to_lf(phi_per_mass, alpha, dm, cms, clog_mass, all_bin_pair):
+    schechter_sum = np.zeros(len(all_bin_pair[0]))
+    cnum = len(cms)
+    for i in range(cnum):
+        ms = cms[i]
+        log_mass = clog_mass[i]
+        phi = phi_per_mass * 10**(log_mass - PIV_LOG_MASS)
+        this_schechter = np.array([
+            schechter_bins(phi,
+                           alpha,
+                           ms + dm,
+                           bins=[all_bin_pair[i][j][0], all_bin_pair[i][j][1]])
+            for j in range(len(all_bin_pair[i]))
+        ]).flatten()
+        schechter_sum += this_schechter
+    return schechter_sum
+
+
+def log_likelihood(p0, cms, clog_mass, sum_mean, sum_std, all_bin_pair):
+    phi_per_mass, alpha, dm = p0
+    schechter_sum = param_to_lf(phi_per_mass, alpha, dm, cms, clog_mass,
+                                all_bin_pair)
+    log_gauss = -(schechter_sum - sum_mean)**2 / (2 * sum_std**2)
+    log_gauss[np.isnan(log_gauss)] = 0
+    iambadvalues = (schechter_sum <= 0.0) & (np.isclose(sum_mean, 0.0))
+    log_gauss[iambadvalues] = 0.0
+    returnme = np.sum(log_gauss)
     if np.isnan(returnme).any() == True:
         print('p0 =', p0)
-        print('S =', S)
-        print('bkg =', bkg)
-        print('D =', D)
+        print('schechter_sum =', schechter_sum)
+        print('sum_mean, sum_std =', sum_mean, sum_std)
         return -np.inf
     return returnme
 
 
-def log_prior(p0, bkg, rd_bkg_mean, rd_bkg_std):
-    (m_s, phi_s, alpha) = p0
-    if not 0 < phi_s < 1000:
+def log_prior(p0, cms, clog_mass):
+    (phi_per_mass, alpha, dm) = p0
+    phi = phi_per_mass * clog_mass
+    ms = cms + dm
+    if not ((0 < phi) & (phi < 1000)).all():
         return -np.inf
-    if not 15 < m_s < 25:
+    if not ((15 < ms) & (ms < 25)).all():
         return -np.inf
     if not -5 < alpha <= 5:
         return -np.inf
-    bkg = np.array(bkg)
-    if (bkg < 0).any():
-        return -np.inf
-    rd_bkg_mean = np.array(rd_bkg_mean)
-    rd_bkg_std = np.array(rd_bkg_std)
-    log_bkg_gauss = -(bkg - rd_bkg_mean)**2 / (2 * rd_bkg_std**2)
-    log_bkg_gauss[np.isnan(log_bkg_gauss)] = 0
-    return np.sum(log_bkg_gauss)
+    return 0.
 
 
-def find_ini_args(bkg_mean_d, nwalkers, ndim):
+def log_prob(p0, cms, clog_mass, sum_mean, sum_std, bin_pair):
+    ll = log_likelihood(p0, cms, clog_mass, sum_mean, sum_std, bin_pair)
+    lp = log_prior(p0, cms, clog_mass)
+    return ll + lp
+
+
+def find_ini_args(nwalkers, ndim):
     """Generate the initial values of MCMC
     
     Args:
@@ -184,10 +186,9 @@ def find_ini_args(bkg_mean_d, nwalkers, ndim):
     Returns:
         ndarray: Initial values of MCMC parameters.
     """
-    p0_number = [20, -1, 0] # phi, alpha, dm
-    p_var = [10, 0.2, 0.2]
-    total_var = np.append(p_var, bkg_mean_d / 2)
-    p0_number = np.append(p0_number, bkg_mean_d)
+    p0_number = [20., -1., 0.] # phi, alpha, dm
+    p_var = [10., 0.2, 0.2]
+    total_var = p_var
     randomization = np.random.rand(nwalkers, ndim) * 2
     randomization -= 1
     # Determine the scale of `p0_number`.
@@ -251,77 +252,6 @@ def dm_model_mz(log_M, z, dm0, F, G):
     return dm0 * (M / M_piv)**F * ((1 + z) / (1 + z_piv))**G
 
 
-def stacked_log_prob(
-        p,
-        obs,
-        ms_model,
-        area,
-        log_mass,
-        unmasked_fraction,
-        obs_bin_pair,
-        common_bkg_mean_d,
-        common_bkg_std_d,
-        obs_mid_bins):
-    """The sum of the logarithmic probability of the group of clusters. 
-
-    Args:
-        p (array-like): (parNum,) array. The parameter values of the MCMC.
-        obs (array-like): The observation LF of the clusters.
-        ms_model (array-like): The characeristic magnitude of the clusters.
-        area (ndarray): Area (dimensionless) of the clusters.
-        log_mass (array-like): The logarithm of the mass of the clusters.
-        unmaksed_fraction (array-like): The unmasked fraction of the clusters.
-        obs_bin_pair (ndarray): (cluNum, 2) array. The lower/upper bounds of
-            the cluster bins.
-        common_bkg_mean_d (array-like): The mean background density 
-            (N/area.value).
-        common_bkg_std_d (array-like): The standard deviation of background 
-            density (N/area.value). 
-        obs_mid_bins (array-like): (cluNum, binNum) array. The center of each 
-            bin for each cluster.
-    
-    Returns:
-        float: The sum of the logarithmic probability of `p`.
-    """
-    # Prepare args for log_prior and log_likelihood for each cluster.
-    # p0(i.e. parameters except bkg), obs, bkg, bin_pair, unmasked_fraction,
-    # rd_bkg_mean and rd_bkg_std are needed.
-    cnum = len(ms_model)
-    (phi_per_mass, alpha, dm) = p[:ARG_NUM]
-    # In case phi, alpha, dm can be modeled based on the clusters.
-    phi = np.full(cnum, phi_per_mass * 10**(log_mass - PIV_LOG_MASS))
-    alpha = np.full(cnum, alpha)
-    dm = np.full(cnum, dm)
-    common_bkg_d = np.array(p[ARG_NUM:])
-    if len(np.unique([len(obs), len(ms_model), len(area)])) != 1:
-        raise ValueError('obs, ms_model, area, common_bkg_mean_d and'
-                         'common_bkg_std_d must have the same length')
-
-    # Get bkg for each cluster.
-    bin_num = len(common_bkg_d)
-    all_bkg_d = np.full((cnum, bin_num), common_bkg_d)
-    all_bkg_mean_d = np.full((cnum, bin_num), common_bkg_mean_d)
-    all_bkg_std_d = np.full((cnum, bin_num), common_bkg_std_d)
-    all_bkg_mean = np.multiply(all_bkg_mean_d, area[:, np.newaxis])
-    all_bkg_std = np.multiply(all_bkg_std_d, area[:, np.newaxis])
-    all_bkg = np.multiply(all_bkg_d, area[:, np.newaxis])
-
-    # Get log_prior and log_likelihood for each cluster.
-    lp_list = [
-        log_prior((ms_model[i] + dm[i], phi[i], alpha[i]), all_bkg[i],
-                  all_bkg_mean[i], all_bkg_std[i]) for i in range(cnum)
-    ]  # its p = (m_s, phi_s, alpha)
-    ll_list = [
-        log_likelihood((ms_model[i] + dm[i], phi[i], alpha[i]), obs[i],
-                       all_bkg[i], obs_bin_pair[i], unmasked_fraction[i])
-        for i in range(cnum)
-    ]
-
-    returnme = sum(lp_list) + sum(ll_list)
-    if np.isnan(returnme).any() == True:
-        return -np.inf
-    return sum(lp_list) + sum(ll_list)
-
 
 def get_used_bkg_bins(bkg_bins, all_obs_bins):
     cnum = len(all_obs_bins)
@@ -346,14 +276,11 @@ def get_used_bkg_bins(bkg_bins, all_obs_bins):
 
 
 
-def get_sampler(obs_alllf,
-                all_obs_bins,
-                common_bkg_mean_d,
-                common_bkg_std_d,
+def get_sampler(all_obs_bins,
                 ms_model,
-                area,
                 log_mass,
-                unmasked_fraction,
+                sum_mean,
+                sum_std,
                 nwalkers='auto',
                 step=10000,
                 p0=None,
@@ -393,37 +320,32 @@ def get_sampler(obs_alllf,
     Returns:
         tuple: (sampler, state). They can be referred from `emcee`.
     """
+    # log_prob(p0, cms, clog_mass, sum_mean, sum_std, bin_pair)
     # Goal: Find parameters needed for function `stacked_log_prob`.
     # Parameters: obs, ms_model, area, unmasked_fraction, obs_bin_pair,
     #             common_bkg_mean_d, common_bkg_std_d, bkg_mid_bins and
     #             obs_mid_bins.
-    cnum = len(obs_alllf)
+    cnum = len(ms_model)
     # Some bins of the bkg are not used so they are removed for the fitting.
     # But for now, the background is just the mean bkg of all clusters.
     # So the remove is no longer needed.
     # is_used, used_bkg_bins = get_used_bkg_bins(bkg_bins, all_obs_bins)
-    bkg_mean_d_4fit = common_bkg_mean_d
-    bkg_std_d_4fit = common_bkg_std_d
     obs_bin_pair = [[[all_obs_bins[i][j], all_obs_bins[i][j + 1]]
                      for j in range(len(all_obs_bins[i]) - 1)]
                     for i in range(cnum)]
     obs_mid_bins = np.mean(obs_bin_pair, axis=2)
-    ndim = len(bkg_mean_d_4fit) + ARG_NUM
+    ndim = ARG_NUM
     print('ndim =', ndim)
     if nwalkers == 'auto':
         nwalkers = int(ndim * 2.5)
     if p0 is None:
-        p0 = find_ini_args(np.hstack(bkg_mean_d_4fit), nwalkers, ndim)
-    partial_log_prob = functools.partial(stacked_log_prob,
-                                         obs=obs_alllf,
-                                         ms_model=ms_model,
-                                         area=area,
-                                         log_mass=log_mass,
-                                         unmasked_fraction=unmasked_fraction,
-                                         obs_bin_pair=obs_bin_pair,
-                                         common_bkg_mean_d=bkg_mean_d_4fit,
-                                         common_bkg_std_d=bkg_std_d_4fit,
-                                         obs_mid_bins=obs_mid_bins)
+        p0 = find_ini_args(nwalkers, ndim)
+    partial_log_prob = functools.partial(log_prob,
+                                         cms=ms_model,
+                                         clog_mass=log_mass,
+                                         sum_mean=sum_mean,
+                                         sum_std=sum_std,
+                                         bin_pair=obs_bin_pair)
     print('np.shape(p0) =', np.shape(p0))
     print('ndim=', ndim)
     if cpu_num != 1:
@@ -551,7 +473,7 @@ def proper_mag_bins(cmag, low_diff, up_diff, bin_width):
     return new_bins
 
 
-def easy_mcmc(efeds_index, efeds, hsc, rd_result):
+def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode='red'):
     """Make a dict for the MCMC fitting
     
     This function generates a dict containing the data needed for the MCMC.
@@ -568,7 +490,6 @@ def easy_mcmc(efeds_index, efeds, hsc, rd_result):
     # Goal: Offer the parameters needed for `get_sampler`. They are obs_alllf,
     #       all_obs_bins, common_bkg_mean_d, common_bkg_std_d, bkg_bins,
     #       ms_model, area and unmasked_fraction.
-
     # Initial setup
     z = efeds[efeds_index]['Z_BEST_COMB'].value
     band = np.array(fit_band(z))
@@ -592,17 +513,29 @@ def easy_mcmc(efeds_index, efeds, hsc, rd_result):
     ]
 
     # Make obs LF
+    isred = [is_red(hsc_index[i], hsc, z[i], rs_data) for i in range(cnum)]
+    if mode == 'red':
+        this_hsc_index = [hsc_index[i][isred[i]] for i in range(cnum)]
+        all_bkg_mean_d = rs_rd_result['mean_red_bkg_d'][efeds_index].to(
+            u.arcmin**-2).value
+        all_bkg_std_d = rs_rd_result['std_red_bkg_d'][efeds_index].to(
+            u.arcmin**-2).value
+        
     obs_alllf = np.array([
-        index2fl(hsc_index[i], hsc, band[i] + 'mag_cmodel', all_obs_bins[i])
+        index2fl(this_hsc_index[i], hsc, band[i] + 'mag_cmodel', all_obs_bins[i])
         for i in range(cnum)
     ])
     obs_alllf_corrected = obs_alllf / unmasked_fraction[:, np.newaxis]
-
+    obs_alllf_corrected_sum = np.sum(obs_alllf_corrected, axis=0)
+    obs_alllf_corrected_sum_std = np.sum(obs_alllf /
+                                     unmasked_fraction[:, np.newaxis]**2,
+                                     axis=0)**0.5
     # Make bkg LF
-    all_bkg_mean_d = rd_result['mean_bkg_d'][efeds_index]
-    all_bkg_std_d = rd_result['std_bkg_d'][efeds_index]
-    common_bkg_mean_d = np.mean(all_bkg_mean_d.to(u.arcmin**-2).value, axis=0)
-    common_bkg_std_d = np.sum((all_bkg_std_d.to(u.arcmin**-2).value)**2, axis=0)**0.5 / cnum
+    sum_bkg_mean = np.sum(all_bkg_mean_d * area[:, np.newaxis], axis=0)
+    sum_bkg_std = np.sum(all_bkg_std_d**2 * area[:, np.newaxis]**2,
+                         axis=0)**0.5
+    sum_mean = obs_alllf_corrected_sum - sum_bkg_mean
+    sum_std = (obs_alllf_corrected_sum_std**2 + sum_bkg_std**2)**0.5
 
     returnme = {
         'obs_alllf': obs_alllf,
@@ -610,8 +543,8 @@ def easy_mcmc(efeds_index, efeds, hsc, rd_result):
         'all_obs_bins': all_obs_bins,
         'all_bkg_mean_d': all_bkg_mean_d,
         'all_bkg_std_d': all_bkg_std_d,
-        'common_bkg_mean_d': common_bkg_mean_d,
-        'common_bkg_std_d': common_bkg_std_d,
+        'sum_mean': sum_mean,
+        'sum_std': sum_std,
         'band': band,
         'ms_model': ms_model,
         'log_mass': log_mass,
@@ -619,6 +552,10 @@ def easy_mcmc(efeds_index, efeds, hsc, rd_result):
         'z': z,
         'index': efeds_index,
         'unmasked_fraction': unmasked_fraction,
+        'obs_alllf_corrected_sum': obs_alllf_corrected_sum,
+        'obs_alllf_corrected_sum_std': obs_alllf_corrected_sum_std,
+        'sum_bkg_mean': sum_bkg_mean,
+        'sum_bkg_std': sum_bkg_std
     }
     return returnme
 

@@ -304,7 +304,7 @@ def stacked_log_prob(
     all_bkg_std_d = np.full((cnum, bin_num), common_bkg_std_d)
     all_bkg_mean = np.multiply(all_bkg_mean_d, area[:, np.newaxis])
     all_bkg_std = np.multiply(all_bkg_std_d, area[:, np.newaxis])
-    all_bkg = np.multiply(all_bkg_d, area[:, np.newaxis])
+    all_bkg = np.multiply(all_bkg_d, area[:, np.newaxis]) # TODO: unmasked fraction
 
     # Get log_prior and log_likelihood for each cluster.
     lp_list = [
@@ -580,7 +580,7 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
     unmasked_fraction = efeds[efeds_index]['unmasked_fraction'].value
     hsc_index = efeds['galaxy_index'][efeds_index]
     log_mass = efeds[efeds_index]['median_500c_lcdm'].value
-    area = efeds[efeds_index]['area'].to(u.arcmin**2).value
+    area = efeds[efeds_index]['area'].to(u.arcmin**2).value # TODO: area * unmasked fraction
     if len(np.atleast_1d(band)) == 1:
         band = np.full(len(efeds_index), band)
     ms_model = np.array(
@@ -615,7 +615,7 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode):
 
     # Make bkg LF
     common_bkg_mean_d = np.mean(all_bkg_mean_d, axis=0)
-    common_bkg_std_d = np.sum(all_bkg_std_d**2, axis=0)**0.5
+    common_bkg_std_d = np.sum(all_bkg_std_d**2, axis=0)**0.5 / cnum
 
     returnme = {
         'obs_alllf': obs_alllf,

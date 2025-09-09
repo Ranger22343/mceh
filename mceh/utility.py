@@ -64,6 +64,7 @@ def plot_step(sampler,
     axes[-1].set_xlabel("step number")
     if title is not None:
         plt.suptitle(title)
+    return fig, axes
 
 
 def printt(*args):

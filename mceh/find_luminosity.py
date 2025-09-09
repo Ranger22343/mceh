@@ -58,14 +58,16 @@ def is_within_angular_radius(sat_ra, sat_dec, center_ra, center_dec,
         angular_radius (Quantity): Radius of the circle.
     
     Returns:
-        list: Boolean list which states whether the corresponding objects are
+        ndarray: Boolean list which states whether the corresponding objects are
             within the circle.
     """
-    sat_coord = coord.SkyCoord(sat_ra, sat_dec)
-    cen_coord = coord.SkyCoord(center_ra, center_dec)
-    angular_distance = cen_coord.separation(sat_coord)
-    in_radius = angular_distance <= angular_radius
-    return in_radius
+    sat_num = len(sat_ra)
+    index = np.array(index_within_angular_radius(sat_ra, sat_dec, center_ra, 
+                                                 center_dec, angular_radius))
+    returnme = np.full(sat_num, False)
+    returnme[index] = True
+    return returnme
+    
 
 
 def satellites_around_centers(sat_data, cen_ra, cen_dec, cen_r):
