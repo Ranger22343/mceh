@@ -29,6 +29,9 @@ ZBINS = np.hstack([np.linspace(0.10, 0.35, 7)[:-1],    # g-r v.s. r or g-i v.s. 
                    #0.480, 0.60, 0.75,                 # r-i v.s. i or r-z v.s. z
                    #1.000, 1.31,                       # i-z v.s. z
                    ])
+# Since the last group divided by ZBINS has only 1 cluster, I removed the second
+# last value so it combine to the second last group.
+ZBINS2 = np.delete(ZBINS, -2)
 ARG_NUM = 3
 LABELS = [r'$\phi_0$', r'$\beta_\phi$', r'$\alpha_0$',
           r'$\Delta m_0$', r'$\gamma_\phi$', r'$\beta_\alpha$',
@@ -294,21 +297,13 @@ def get_sampler(all_obs_bins,
     whether the bin is used in each band.
 
     Args:
-        obs_alllf (ndarray): (cluNum, binNum) array. The observational LF
-            (without background subtraction) of each cluster.
         all_obs_bins (ndarray): (cluNum, binBoundNum) array. The boundaries of
             the bins of the observaiontal LF for each cluster.
-        common_bkg_mean_d (list): (binNum,) list. The common mean
-            background density (N/area).
-        common_bkg_std_d (list): (binNum,) list. The common std of
-            background density (N/area).
-        bkg_bins (list): (binBoundNum,) list. The bin boundaries of the
-            background LF.
         ms_model (array-like): The model values of characteristic magnitude of
             each cluster.
-        area (ndarray): Area (dimensionless) of the clusters.
         log_mass (array-like): The logarithm of the mass of the clusters.
-        unmasked_fraction (array-like): The unmasked fraction of the clusters.
+        sum_mean (ndarray): The summation of the pure LF (applying masking correction)
+        sum_std (ndarray): The uncertainty of `sum_mean`
         nwalkers (int or str): Number of walkers. If 'auto', this number will
             be automatically chosen (2.5 * number of parameters).
         step (int): The number of steps the MCMC will go through.
@@ -482,8 +477,8 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode='red'):
         efeds_index (ndarray): The index of the eFEDS.
         efeds (QTable): The eFEDS data.
         hsc (QTable): The HSC data.
-        rd_result (dict): The random data. See `init()`. There are two 
-            columns needed, one is 'mean_lf_d' and the other is 'std_lf_d'.
+        rs_rd_result (dict): Data of the background results. See `init()`.
+        rs_data (Table): Data of RS model from I-NON Chiu See `init()`.
     Returns:
         dict: The dict containing the data needed for the MCMC.
     """
@@ -494,8 +489,6 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode='red'):
     z = efeds[efeds_index]['Z_BEST_COMB'].value
     band = np.array(fit_band(z))
     band[band == 'y'] = 'z'  # y band is not used in the fitting
-    if np.unique(band).size != 1:
-        raise ValueError('Cannot fit multiple bands at once.')
     band_index = band_name2index(band[0])
     cnum = len(efeds_index)
     unmasked_fraction = efeds[efeds_index]['unmasked_fraction'].value
@@ -520,7 +513,7 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode='red'):
             u.arcmin**-2).value
         all_bkg_std_d = rs_rd_result['std_red_bkg_d'][efeds_index].to(
             u.arcmin**-2).value
-        
+
     obs_alllf = np.array([
         index2fl(this_hsc_index[i], hsc, band[i] + 'mag_cmodel', all_obs_bins[i])
         for i in range(cnum)
@@ -793,7 +786,42 @@ def get_redblue_lf(hsc_index, hsc, zcl, rs_data, bins):
 
 
 def sr_efeds_index(efeds):
+    # Return the indicies where efeds clusters are science ready
     return np.where(efeds['low_cont_flag'] & (efeds['unmasked_fraction'] > 0.6))[0]
 
 def is_sr_efeds(efeds):
+    # Return whether the efeds clusters are science ready
     return efeds['low_cont_flag'] & (efeds['unmasked_fraction'] > 0.6)
+
+
+def index_group(efeds, mode):
+    # Easily group the efeds needed for analysis
+    efeds_group = [
+        np.where((ZBINS2[i] <= efeds['Z_BEST_COMB'])
+                 & (efeds['Z_BEST_COMB'] < ZBINS2[i + 1]))[0]
+        for i in range(len(ZBINS2) - 1)
+    ]
+    # Make sure they are science-ready
+    for i in range(len(efeds_group)):
+        these_efeds = efeds[efeds_group[i]]
+        is_sr = these_efeds['low_cont_flag'] & (
+            these_efeds['unmasked_fraction'] > 0.6)
+        efeds_group[i] = efeds_group[i][is_sr]
+
+    if mode == 'z':
+        return efeds_group
+    if mode == 'z_mass':
+        new_efeds_group = []
+        # The last group contains only 6 cluster so we don't divide the last
+        # group based on the mass
+        for i in range(len(efeds_group) - 1):
+            index = efeds_group[i]
+            this_efeds = efeds[index]
+            all_mass = this_efeds['median_500c_lcdm']
+            median_mass = np.median(all_mass)
+            low_index = index[all_mass <= median_mass]
+            high_index = index[all_mass > median_mass]
+            new_efeds_group.append(low_index)
+            new_efeds_group.append(high_index)
+        new_efeds_group.append(efeds_group[-1])
+        return new_efeds_group
