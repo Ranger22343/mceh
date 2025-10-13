@@ -124,15 +124,13 @@ def schechter_bins(phi_s, alpha, m_s, bins):
     return returnme
 
 
-def param_to_lf(phi_per_mass, alpha, dm, cms, clog_mass, all_bin_pair):
+def param_to_lf(phi_per_mass, alpha, dm, cms, all_bin_pair):
     schechter_sum = np.zeros(len(all_bin_pair[0]))
     cnum = len(cms)
     for i in range(cnum):
         ms = cms[i]
-        log_mass = clog_mass[i]
-        phi = phi_per_mass * 10**(log_mass - PIV_LOG_MASS)
         this_schechter = np.array([
-            schechter_bins(phi,
+            schechter_bins(phi_per_mass,
                            alpha,
                            ms + dm,
                            bins=[all_bin_pair[i][j][0], all_bin_pair[i][j][1]])
@@ -142,10 +140,9 @@ def param_to_lf(phi_per_mass, alpha, dm, cms, clog_mass, all_bin_pair):
     return schechter_sum
 
 
-def log_likelihood(p0, cms, clog_mass, sum_mean, sum_std, all_bin_pair):
+def log_likelihood(p0, cms, sum_mean, sum_std, all_bin_pair):
     phi_per_mass, alpha, dm = p0
-    schechter_sum = param_to_lf(phi_per_mass, alpha, dm, cms, clog_mass,
-                                all_bin_pair)
+    schechter_sum = param_to_lf(phi_per_mass, alpha, dm, cms, all_bin_pair)
     log_gauss = -(schechter_sum - sum_mean)**2 / (2 * sum_std**2)
     log_gauss[np.isnan(log_gauss)] = 0
     iambadvalues = (schechter_sum <= 0.0) & (np.isclose(sum_mean, 0.0))
@@ -173,7 +170,7 @@ def log_prior(p0, cms, clog_mass):
 
 
 def log_prob(p0, cms, clog_mass, sum_mean, sum_std, bin_pair):
-    ll = log_likelihood(p0, cms, clog_mass, sum_mean, sum_std, bin_pair)
+    ll = log_likelihood(p0, cms, sum_mean, sum_std, bin_pair)
     lp = log_prior(p0, cms, clog_mass)
     return ll + lp
 
@@ -234,28 +231,6 @@ def find_mcmc_values(sampler, percent=(50, ), return_flat=False, quiet=False):
     return values
 
 
-def phi_model_mz(log_M, z, A, B, C):
-    M_piv = 10**14  #10^14 M_sun/h
-    z_piv = 0.4
-    M = 10**np.array(log_M)
-    return A * (M / M_piv)**B * ((1 + z) / (1 + z_piv))**C
-
-
-def alpha_model_mz(log_M, z, alpha0, D, E):
-    M_piv = 10**14  #10^14 M_sun/h
-    z_piv = 0.4
-    M = 10**np.array(log_M)
-    return alpha0 * (M / M_piv)**D * ((1 + z) / (1 + z_piv))**E
-
-
-def dm_model_mz(log_M, z, dm0, F, G):
-    M_piv = 10**14  #10^14 M_sun/h
-    z_piv = 0.4
-    M = 10**np.array(log_M)
-    return dm0 * (M / M_piv)**F * ((1 + z) / (1 + z_piv))**G
-
-
-
 def get_used_bkg_bins(bkg_bins, all_obs_bins):
     cnum = len(all_obs_bins)
     bkg_mbins = (bkg_bins[:-1] + bkg_bins[1:]) / 2
@@ -275,8 +250,6 @@ def get_used_bkg_bins(bkg_bins, all_obs_bins):
             is_edge_used[i + 1] = True
     used_bkg_bins = bkg_bins[is_edge_used]
     return is_used, used_bkg_bins
-
-
 
 
 def get_sampler(all_obs_bins,
@@ -489,11 +462,14 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode='red'):
     z = efeds[efeds_index]['Z_BEST_COMB'].value
     band = np.array(fit_band(z))
     band[band == 'y'] = 'z'  # y band is not used in the fitting
+    band_index = band_name2index(band[0])
     cnum = len(efeds_index)
     unmasked_fraction = efeds[efeds_index]['unmasked_fraction'].value
     hsc_index = efeds['galaxy_index'][efeds_index]
     log_mass = efeds[efeds_index]['median_500c_lcdm'].value
     area = efeds[efeds_index]['area'].to(u.arcmin**2).value
+    norm_log_mass = log_mass - PIV_LOG_MASS
+    norm_mass = 10**norm_log_mass
     if len(np.atleast_1d(band)) == 1:
         band = np.full(len(efeds_index), band)
     ms_model = np.array(
@@ -514,20 +490,21 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode='red'):
             u.arcmin**-2).value
 
     obs_alllf = np.array([
-        index2fl(this_hsc_index[i], hsc, band[i] + 'mag_cmodel', all_obs_bins[i])
-        for i in range(cnum)
+        index2fl(this_hsc_index[i], hsc, band[i] + 'mag_cmodel',
+                 all_obs_bins[i]) for i in range(cnum)
     ])
     obs_alllf_corrected = obs_alllf / unmasked_fraction[:, np.newaxis]
-    obs_alllf_corrected_sum = np.sum(obs_alllf_corrected, axis=0)
-    obs_alllf_corrected_sum_std = np.sum(obs_alllf /
-                                     unmasked_fraction[:, np.newaxis]**2,
-                                     axis=0)**0.5
+    obs_alllf_corrected_std = (np.sqrt(obs_alllf) /
+                               unmasked_fraction[:, np.newaxis])
+    all_bkg_mean = all_bkg_mean_d * area[:, np.newaxis]
     # Make bkg LF
-    sum_bkg_mean = np.sum(all_bkg_mean_d * area[:, np.newaxis], axis=0)
-    sum_bkg_std = np.sum(all_bkg_std_d**2 * area[:, np.newaxis]**2,
-                         axis=0)**0.5
-    sum_mean = obs_alllf_corrected_sum - sum_bkg_mean
-    sum_std = (obs_alllf_corrected_sum_std**2 + sum_bkg_std**2)**0.5
+    sum_mean = np.sum(
+        (obs_alllf_corrected - all_bkg_mean) / norm_mass[:, np.newaxis],
+        axis=0)
+    sum_std = np.sum((obs_alllf_corrected_std**2 +
+                      (all_bkg_std_d * area[:, np.newaxis])**2) /
+                     (norm_mass[:, np.newaxis])**2,
+                     axis=0)**0.5
 
     returnme = {
         'obs_alllf': obs_alllf,
@@ -543,11 +520,7 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode='red'):
         'area': area,
         'z': z,
         'index': efeds_index,
-        'unmasked_fraction': unmasked_fraction,
-        'obs_alllf_corrected_sum': obs_alllf_corrected_sum,
-        'obs_alllf_corrected_sum_std': obs_alllf_corrected_sum_std,
-        'sum_bkg_mean': sum_bkg_mean,
-        'sum_bkg_std': sum_bkg_std
+        'unmasked_fraction': unmasked_fraction
     }
     return returnme
 
@@ -601,19 +574,6 @@ def value2bkg_d_funclist(value, is_used, bins=BINS):
     return bkg_func
 
 
-def value2purelf(value, log_M, z, ms, bins=BINS):
-    value_ = np.array(value)
-    # args = [A, B, alpha0, dm0, C, D, E, F, G] -> 9 args
-    A, B, C = value_[[0, 1, 4]]
-    alpha0, D, E = value_[[2, 5, 6]]
-    dm0, F, G = value_[[3, 7, 8]]
-    phi = phi_model_mz(log_M, z, A, B, C)
-    alpha = alpha_model_mz(log_M, z, alpha0, D, E)
-    dm = dm_model_mz(log_M, z, dm0, F, G)
-    purelf = schechter_bins(ms + dm, phi, alpha, bins)
-    return purelf
-
-
 def get_color(index, hsc, z=None):
     hsc = hsc[index]
     if z is None:
@@ -652,17 +612,11 @@ def get_fitmag(index, hsc, z=None):
     return fitmag, fitmag_err
 
 
-def get_rsfunc_param(z, rs_data):
+def get_rsfunc(z, rs_data):
     rs_yint_fixslope = interpolate.interp1d(rs_data['mean_zcl'],
                                             rs_data['rs_yint_fixslope'],
                                             fill_value='extrapolate')
     rs_slope_fixslope = rs_data['rs_slope_fixslope'][0]  # It's fixed
-    yint = rs_yint_fixslope(z)
-    slope = rs_slope_fixslope
-    return slope, yint
-
-
-def get_rsfunc_cw_param(z, rs_data):
     colorwidth_slope_fixslope = interpolate.interp1d(
         rs_data['mean_zcl'],
         rs_data["colorwidth_slope_fixslope"],
@@ -671,32 +625,25 @@ def get_rsfunc_cw_param(z, rs_data):
         rs_data['mean_zcl'],
         rs_data['colorwidth_yint_fixslope'],
         fill_value='extrapolate')
+    yint = rs_yint_fixslope(z)
+    slope = rs_slope_fixslope
     cw_yint = colorwidth_yint_fixslope(z)
     cw_slope = colorwidth_slope_fixslope(z)
     cw_err_func = interpolate.interp1d(rs_data['mean_zcl'],
                                        np.nanmin(rs_data['colorwidth_mea'],
                                                  axis=1),
                                        fill_value='extrapolate')
-    cw_err = cw_err_func(z)
-    return cw_slope, cw_yint, cw_err
-
-
-def get_rsfunc(z, rs_data):
-    slope, yint = get_rsfunc_param(z, rs_data)
-    cw_yint, cw_slope = get_rsfunc_param(z, rs_data)
-    cw_slope, cw_yint, cw_err = get_rsfunc_cw_param(z, rs_data)
-    cw_err = np.atleast_1d(cw_err)
 
     def rsfunc(mag):
         return slope * (mag - 20.0) + yint
 
     def cw_rsfunc(mag):
         returnme = np.atleast_1d(cw_slope * (mag - 20.0) + cw_yint)
+        cw_err = np.atleast_1d(cw_err_func(z))
         returnme[returnme < cw_err] = cw_err
         return returnme
 
     return rsfunc, cw_rsfunc
-
 
 # blue_mean = red_mean - red_std * 3.5, blue_std = red_std * 1.4
 def get_bsfunc(z, rs_data):
