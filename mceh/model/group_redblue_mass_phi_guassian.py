@@ -38,6 +38,11 @@ LABELS = [r'$\phi_0$', r'$\beta_\phi$', r'$\alpha_0$',
           r'$\gamma_\alpha$', r'$\beta_{m}$', r'$\gamma_{m}$']
 BAND_NAME = np.array(['g', 'r', 'i', 'z', 'y'])
 PIV_LOG_MASS = 14  # 10^14 M_sun/h
+RS_BAND_NUM = [0, 6, 5, 2, 1] # g, r, i, z, y
+RS_BAND_INDEX = [np.array((range(sum(RS_BAND_NUM[:i]), 
+                                 sum(RS_BAND_NUM[:i + 1])))) 
+                 for i in range(len(RS_BAND_NUM))]
+
 
 
 def init(*args):
@@ -75,7 +80,7 @@ def init(*args):
             rd_result = ut.pickle_load('data/20250813bkg_result.pickle')
             return_dict['rd_result'] = rd_result
         if arg == 'rs_rd_result':
-            rs_rd_result = ut.pickle_load('result/20250319redblue_bkg.pickle')
+            rs_rd_result = ut.pickle_load('result/20251013redblue_bkg.pickle')
             return_dict['rs_rd_result'] = rs_rd_result
         if arg == 'rs_data':
             rs_data = fits.getdata('data/rs.fits', ext=-1)
@@ -653,9 +658,14 @@ def get_fitmag(index, hsc, z=None):
 
 
 def get_rsfunc_param(z, rs_data):
-    rs_yint_fixslope = interpolate.interp1d(rs_data['mean_zcl'],
-                                            rs_data['rs_yint_fixslope'],
-                                            fill_value='extrapolate')
+    band = fit_band([z])[0]
+    band_index = band_name2index(band)
+    rs_index = RS_BAND_INDEX[band_index]
+    rs_yint_fixslope = interpolate.interp1d(
+        rs_data['mean_zcl'][rs_index],
+        rs_data['rs_yint_fixslope'][rs_index],
+        fill_value='extrapolate'
+        )
     rs_slope_fixslope = rs_data['rs_slope_fixslope'][0]  # It's fixed
     yint = rs_yint_fixslope(z)
     slope = rs_slope_fixslope
@@ -663,20 +673,24 @@ def get_rsfunc_param(z, rs_data):
 
 
 def get_rsfunc_cw_param(z, rs_data):
+    band = fit_band([z])[0]
+    band_index = band_name2index(band)
+    rs_index = RS_BAND_INDEX[band_index]
     colorwidth_slope_fixslope = interpolate.interp1d(
-        rs_data['mean_zcl'],
-        rs_data["colorwidth_slope_fixslope"],
+        rs_data['mean_zcl'][rs_index],
+        rs_data["colorwidth_slope_fixslope"][rs_index],
         fill_value='extrapolate')
     colorwidth_yint_fixslope = interpolate.interp1d(
-        rs_data['mean_zcl'],
-        rs_data['colorwidth_yint_fixslope'],
+        rs_data['mean_zcl'][rs_index],
+        rs_data['colorwidth_yint_fixslope'][rs_index],
         fill_value='extrapolate')
     cw_yint = colorwidth_yint_fixslope(z)
     cw_slope = colorwidth_slope_fixslope(z)
-    cw_err_func = interpolate.interp1d(rs_data['mean_zcl'],
-                                       np.nanmin(rs_data['colorwidth_mea'],
-                                                 axis=1),
-                                       fill_value='extrapolate')
+    cw_err_func = interpolate.interp1d(
+        rs_data['mean_zcl'][rs_index],
+        np.nanmin(rs_data['colorwidth_mea'][rs_index], axis=1),
+        fill_value='extrapolate'
+        )
     cw_err = cw_err_func(z)
     return cw_slope, cw_yint, cw_err
 
