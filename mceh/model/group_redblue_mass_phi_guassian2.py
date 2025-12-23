@@ -170,7 +170,7 @@ def log_prior(p0, cms, clog_mass):
     ms = cms + dm
     if not ((0 < phi) & (phi < 1000)).all():
         return -np.inf
-    if not ((15 < ms) & (ms < 25)).all():
+    if not ((14 < ms) & (ms < 25)).all():
         return -np.inf
     if not -5 < alpha <= 5:
         return -np.inf
@@ -517,9 +517,7 @@ def easy_mcmc(efeds_index, efeds, hsc, rs_rd_result, rs_data, mode='red'):
             u.arcmin**-2).value
         all_bkg_std_d = rs_rd_result['std_red_bkg_d'][efeds_index].to(
             u.arcmin**-2).value
-    #else:
-    #    all_bkg_mean_d = rd_result['mean_bkg_d'][efeds_index]
-    #    all_bkg_std_d = rd_result['std_bkg_d'][efeds_index]
+
     obs_alllf = np.array([
         index2fl(this_hsc_index[i], hsc, band[i] + 'mag_cmodel', all_obs_bins[i])
         for i in range(cnum)
